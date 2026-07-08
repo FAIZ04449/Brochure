@@ -2,6 +2,9 @@ import os
 import shutil
 import time
 import secrets
+import sys
+import json
+import urllib.request
 from datetime import datetime, timedelta
 import database
 
@@ -95,5 +98,49 @@ def seed():
     print("\nDatabase seeded successfully!")
     print("You can now start the web application by running: python app.py")
 
+def test_slack():
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        print("Error: SLACK_WEBHOOK_URL environment variable is not set!")
+        print("Please set it in your environment (e.g. $env:SLACK_WEBHOOK_URL='...' in PowerShell) and run again.")
+        sys.exit(1)
+        
+    print(f"Sending test Slack notification to webhook: {webhook_url[:30]}...")
+    
+    payload = {
+        "text": "Brochure opened by CLI Tester (test@example.com) at Acme Test Corp",
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*[CLI Test] Brochure Opened* 📄\n*Document:* `pibit Brochure.pdf`\n*Recipient:* CLI Tester (<mailto:test@example.com|test@example.com>) at *Acme Test Corp*\n*Opened at:* " + datetime.now().strftime("%Y-%m-%d %H:%M:%S Local Time") + "\n<http://localhost:5000/dashboard?link_id=999|*View Journey Details in Dashboard*>"
+                }
+            }
+        ]
+    }
+    
+    data = json.dumps(payload).encode('utf-8')
+    headers = {'Content-Type': 'application/json'}
+    req = urllib.request.Request(webhook_url, data=data, headers=headers)
+    
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status in (200, 204):
+                    print("Test Slack notification sent successfully!")
+                    return
+                else:
+                    print(f"Slack webhook returned status: {resp.status}")
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {e}")
+            if attempt == 0:
+                time.sleep(2)
+    print("Error: Failed to send Slack notification after 2 attempts.")
+    sys.exit(1)
+
 if __name__ == '__main__':
-    seed()
+    if '--test-slack' in sys.argv:
+        test_slack()
+    else:
+        seed()

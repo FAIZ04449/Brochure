@@ -94,6 +94,19 @@ document.addEventListener('DOMContentLoaded', () => {
             campaignLogs = data.logs;
             renderLogsTable();
             
+            // Check if ?link_id=X is present in URL and automatically trigger journey modal
+            const urlParams = new URLSearchParams(window.location.search);
+            const linkIdParam = urlParams.get('link_id');
+            if (linkIdParam) {
+                // Clear the parameter from the URL address bar cleanly
+                window.history.replaceState({}, document.title, window.location.pathname);
+                
+                const matchedLog = campaignLogs.find(log => log.link_id == linkIdParam);
+                if (matchedLog) {
+                    openRecipientJourneyModal(matchedLog.link_id, matchedLog.recipient_name, matchedLog.recipient_company, matchedLog.recipient_email);
+                }
+            }
+            
         } catch (err) {
             console.error('Error loading analytics:', err);
             logsTableBody.innerHTML = `

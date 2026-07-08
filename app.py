@@ -1,6 +1,7 @@
 import os
 import time
 import secrets
+import threading
 from datetime import datetime, timedelta
 from functools import wraps
 import urllib.request
@@ -90,6 +91,59 @@ def get_ip_geo(ip):
             print(f"GeoIP resolution failed via ipapi.co for {ip}: {e2}")
     return 'Unknown', 'Unknown'
 
+# --- SLACK NOTIFICATIONS ON FIRST OPEN ---
+
+def send_slack_notification_worker(webhook_url, payload):
+    """Sends POST request to Slack Webhook URL with timeout and exactly 1 retry on network failure."""
+    data = json.dumps(payload).encode('utf-8')
+    headers = {'Content-Type': 'application/json'}
+    req = urllib.request.Request(webhook_url, data=data, headers=headers)
+    
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status in (200, 204):
+                    print("Slack notification sent successfully.")
+                    return
+                else:
+                    print(f"Slack webhook returned non-200 status: {resp.status}")
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed to send Slack notification: {e}")
+            if attempt == 0:
+                time.sleep(2)  # Delay 2 seconds before retrying
+    print("Failed to send Slack notification after 2 attempts.")
+
+def send_slack_notification_async(link, host_url):
+    """Asynchronously triggers Slack open alert in a background thread."""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        print("Slack notification bypassed: SLACK_WEBHOOK_URL env variable is not set.")
+        return
+        
+    link_id = link['link_id']
+    name = link['recipient_name']
+    email = link['recipient_email']
+    company = link['recipient_company']
+    filename = link['filename']
+    
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S Local Time")
+    dashboard_link = f"{host_url}dashboard?link_id={link_id}"
+    
+    payload = {
+        "text": f"Brochure opened by {name} ({email}) at {company}",
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Brochure Opened* 📄\n*Document:* `{filename}`\n*Recipient:* {name} (<mailto:{email}|{email}>) at *{company}*\n*Opened at:* {timestamp}\n<{dashboard_link}|*View Journey Details in Dashboard*>"
+                }
+            }
+        ]
+    }
+    
+    threading.Thread(target=send_slack_notification_worker, args=(webhook_url, payload), daemon=True).start()
+
 # --- PUBLIC ROUTING ---
 
 def serve_static_html(filename):
@@ -109,6 +163,24 @@ def serve_static_html(filename):
 def healthz():
     """Health check endpoint for Render/hosting platforms."""
     return jsonify({'status': 'healthy'}), 200
+
+@app.route('/api/test-slack')
+def api_test_slack():
+    """Manual test endpoint to check Slack notification blocks format."""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        return jsonify({'error': 'SLACK_WEBHOOK_URL environment variable is not configured'}), 400
+        
+    mock_link = {
+        'link_id': 999,
+        'recipient_name': 'Test Recipient',
+        'recipient_email': 'test@example.com',
+        'recipient_company': 'Acme Test Corp',
+        'filename': 'Test_Brochure.pdf'
+    }
+    
+    send_slack_notification_async(mock_link, request.host_url)
+    return jsonify({'status': 'success', 'message': 'Test Slack notification triggered in background.'}), 200
 
 @app.route('/')
 def home():
@@ -164,6 +236,9 @@ def api_session_start():
     user_agent = request.headers.get('User-Agent', 'Unknown')
     country, city = get_ip_geo(ip_address)
     
+    # Check if this is the recipient's first open (0 previous sessions)
+    is_first_open = (database.get_session_count_for_link(link['link_id']) == 0)
+
     session_id = secrets.token_hex(16)
     success = database.create_session(
         session_id=session_id,
@@ -175,6 +250,8 @@ def api_session_start():
     )
     
     if success:
+        if is_first_open:
+            send_slack_notification_async(link, request.host_url)
         return jsonify({'status': 'success', 'session_id': session_id}), 201
     return jsonify({'error': 'Session initialization failed'}), 500
 

@@ -64,6 +64,13 @@ You can customize runtime behavior by declaring environment variables in your se
 
 - `ADMIN_PASSWORD` (Default: `admin`): Sets the password required to access the admin dashboard.
 - `SECRET_KEY` (Default: a fallback secret string): Sets Flask's session signing token. Change this in production to prevent cookie tampering.
+- `SLACK_WEBHOOK_URL` (Optional): Incoming Webhook URL to send notifications to your Slack channel on first open.
+  
+  **How to generate in Slack:**
+  1. Go to your Slack Workspace App directory and create a new Slack App.
+  2. Turn on **Incoming Webhooks** in the App's configuration page.
+  3. Click **Add New Webhook to Workspace**, pick your channel (e.g. `#pdf-opens`), and authorize it.
+  4. Copy the webhook URL (e.g. `https://hooks.slack.com/services/T.../B.../X...`) and add it as an environment variable.
 
 ---
 

@@ -345,6 +345,19 @@ def sync_session_active_time(session_id, db_path=DATABASE_FILE):
     finally:
         conn.close()
 
+def get_session_count_for_link(link_id, db_path=DATABASE_FILE):
+    """Counts the number of sessions created for a specific link ID."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT COUNT(*) as cnt FROM sessions WHERE link_id = ?", (link_id,))
+        return cursor.fetchone()['cnt']
+    except sqlite3.Error as e:
+        print(f"Error getting session count: {e}")
+        return 0
+    finally:
+        conn.close()
+
 # --- Dashboard & Analytics queries ---
 
 def get_dashboard_stats(db_path=DATABASE_FILE):
