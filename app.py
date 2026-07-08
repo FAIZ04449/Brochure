@@ -92,6 +92,19 @@ def get_ip_geo(ip):
 
 # --- PUBLIC ROUTING ---
 
+def serve_static_html(filename):
+    """Reads HTML files directly from static folder to bypass Gunicorn wsgi.file_wrapper bugs."""
+    file_path = os.path.join(app.static_folder, filename)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        response = make_response(content)
+        response.headers['Content-Type'] = 'text/html; charset=utf-8'
+        return response
+    except Exception as e:
+        print(f"Error serving {filename}: {e}")
+        return "File Not Found", 404
+
 @app.route('/healthz')
 def healthz():
     """Health check endpoint for Render/hosting platforms."""
@@ -107,8 +120,8 @@ def resolve_token_link(token):
     """Resolves token to render HTML5 viewer if active, else shows Link Not Found."""
     link = database.get_link_by_token(token)
     if not link or database.is_link_invalid(link):
-        return app.send_static_file('not_found.html'), 404
-    return app.send_static_file('viewer.html')
+        return serve_static_html('not_found.html'), 404
+    return serve_static_html('viewer.html')
 
 @app.route('/v/<token>/pdf')
 def serve_raw_pdf_bytes(token):
@@ -263,7 +276,7 @@ def login():
         
     if session.get('logged_in'):
         return redirect(url_for('dashboard'))
-    return app.send_static_file('login.html')
+    return serve_static_html('login.html')
 
 @app.route('/logout')
 def logout():
@@ -275,7 +288,7 @@ def dashboard():
     """Renders the dashboard UI if authorized, otherwise redirects to login."""
     if not session.get('logged_in'):
         return redirect(url_for('login'))
-    return app.send_static_file('dashboard.html')
+    return serve_static_html('dashboard.html')
 
 # --- ADMIN API ENDPOINTS (Protected) ---
 
