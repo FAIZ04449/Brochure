@@ -1,0 +1,16 @@
+# Python Cache
+__pycache__/
+*.pyc
+
+# Local Tracking Database
+analytics.db
+
+# Dynamic Storage folder (persisted PDFs)
+storage/*
+!storage/.gitkeep
+
+# Environment Settings
+.env
+.env.local
+venv/
+.venv/

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brochure Document Viewer</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PDF.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="viewer-body">
+
+    <!-- Top Toolbar -->
+    <header class="viewer-toolbar">
+        <div class="toolbar-left">
+            <span class="doc-title" id="doc-title">Loading brochure...</span>
+        </div>
+        
+        <div class="toolbar-center">
+            <button class="nav-btn" id="prev-btn" title="Previous Page">
+                <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <div class="page-indicator">
+                <input type="number" id="page-num-input" class="page-num-input" value="1" min="1">
+                <span class="page-total" id="page-count">/ --</span>
+            </div>
+            <button class="nav-btn" id="next-btn" title="Next Page">
+                <i class="fa-solid fa-chevron-right"></i>
+            </button>
+        </div>
+        
+        <div class="toolbar-right">
+            <button class="zoom-btn" id="zoom-out" title="Zoom Out">
+                <i class="fa-solid fa-minus"></i>
+            </button>
+            <span class="zoom-percent" id="zoom-value">100%</span>
+            <button class="zoom-btn" id="zoom-in" title="Zoom In">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+            <button class="zoom-btn" id="zoom-fit" title="Fit to Width">
+                <i class="fa-solid fa-expand"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Canvas Viewer Workspace -->
+    <main class="viewer-container" id="viewer-container">
+        <div id="loading-spinner" class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Rendering document pages...</p>
+        </div>
+        
+        <!-- Central Page Container -->
+        <div id="pdf-page-container" class="pdf-page-container hidden">
+            <canvas id="pdf-canvas"></canvas>
+            <div id="link-overlay-layer" class="link-overlay-layer"></div>
+        </div>
+    </main>
+
+    <!-- Viewer Footer -->
+    <footer class="viewer-footer">
+        <p class="privacy-note">
+            <i class="fa-solid fa-circle-info"></i> This document is tracked for engagement analytics.
+        </p>
+    </footer>
+
+    <!-- Viewer & Tracking Logic -->
+    <script src="/static/js/viewer.js"></script>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pibit.ai | Analytics Tracking Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for premium graphical dashboards -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- CSS Style Sheet -->
+    <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body class="admin-dashboard-page">
+
+    <!-- Top Navigation Header -->
+    <header class="admin-header">
+        <div class="header-container">
+            <div class="header-brand">
+                <span class="logo-accent">pibit</span>.ai
+                <span class="hub-tag">Analytics Hub</span>
+            </div>
+            <div class="header-status">
+                <span class="live-pulse"></span>
+                <span>Monitoring Live Interaction</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN BODY -->
+    <main class="dashboard-container">
+        
+        <!-- KPI METRICS GRID -->
+        <section class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-icon icon-blue"><i class="fa-solid fa-users"></i></div>
+                <div class="kpi-info">
+                    <span class="kpi-title">Total Opens</span>
+                    <h2 class="kpi-value" id="kpi-opens">-</h2>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon icon-purple"><i class="fa-solid fa-clock"></i></div>
+                <div class="kpi-info">
+                    <span class="kpi-title">Avg Active Time</span>
+                    <h2 class="kpi-value" id="kpi-time">-</h2>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon icon-teal"><i class="fa-solid fa-scroll"></i></div>
+                <div class="kpi-info">
+                    <span class="kpi-title">Avg Scroll Depth</span>
+                    <h2 class="kpi-value" id="kpi-scroll">-</h2>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon icon-orange"><i class="fa-solid fa-mouse-pointer"></i></div>
+                <div class="kpi-info">
+                    <span class="kpi-title">Total Clicks</span>
+                    <h2 class="kpi-value" id="kpi-clicks">-</h2>
+                </div>
+            </div>
+        </section>
+
+        <!-- ANALYTICS CHARTS GRID -->
+        <section class="charts-grid">
+            <!-- Heatmap (Scroll Attention Chart) -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3><i class="fa-solid fa-fire icon-orange"></i> Section Reading Heatmap</h3>
+                    <p class="chart-subtitle">Average duration spent per brochure section (seconds)</p>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="scrollHeatmapChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Click Interactions Chart -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3><i class="fa-solid fa-hand-pointer icon-purple"></i> Top Button / Link Clicks</h3>
+                    <p class="chart-subtitle">Most frequently triggered actions</p>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="clickInteractionsChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- RECIPIENT SESSION LIST TABLE -->
+        <section class="sessions-section">
+            <div class="section-title-bar">
+                <div>
+                    <h2>Brochure Access Log</h2>
+                    <p class="section-subtitle">Real-time recording of all recipients entering the brochure</p>
+                </div>
+                <button class="btn btn-refresh" id="btn-refresh" data-track-click="Dashboard - Refresh Logs">
+                    <i class="fa-solid fa-rotate"></i> Refresh Data
+                </button>
+            </div>
+
+            <div class="table-responsive-admin">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Recipient / Email</th>
+                            <th>Location / Country</th>
+                            <th>Browser / Device</th>
+                            <th>Active Duration</th>
+                            <th>Scroll Depth</th>
+                            <th>Clicks</th>
+                            <th>Opened Date (UTC)</th>
+                            <th>Interaction</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sessions-table-body">
+                        <!-- Dynamic Sessions will be loaded here -->
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <i class="fa-solid fa-spinner fa-spin"></i> Loading brochure logs...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- DETAILED SESSION JOURNEY MODAL -->
+    <div class="modal-overlay hidden" id="timeline-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div>
+                    <h3 id="modal-recipient">Recipient Journey</h3>
+                    <span class="modal-subtitle" id="modal-session-id">Session ID: </span>
+                </div>
+                <button class="modal-close" id="modal-close-btn">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Timeline elements container -->
+                <div class="timeline" id="journey-timeline">
+                    <!-- Dynamic timeline logs -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script imports -->
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>

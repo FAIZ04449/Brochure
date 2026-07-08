@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pibit.ai | Outreach Tracking Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body class="dashboard-body">
+
+    <!-- Top Navigation Header -->
+    <header class="dashboard-header">
+        <div class="header-container">
+            <div class="header-brand">
+                <span class="logo-accent">pibit</span>.ai
+                <span class="hub-tag">Tracking Hub</span>
+            </div>
+            <div class="header-nav">
+                <div class="header-status">
+                    <span class="live-pulse"></span>
+                    <span>Monitoring Live Interaction</span>
+                </div>
+                <a href="/logout" class="btn btn-logout"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="dashboard-main">
+        
+        <!-- Tab Bar Navigation -->
+        <div class="tabs-nav-container">
+            <div class="tabs-nav">
+                <button class="tab-btn active" data-tab="overview">
+                    <i class="fa-solid fa-chart-line"></i> Overview
+                </button>
+                <button class="tab-btn" data-tab="links">
+                    <i class="fa-solid fa-link"></i> Links & Outreach
+                </button>
+                <button class="tab-btn" data-tab="logs">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Access Logs
+                </button>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT: OVERVIEW -->
+        <section class="tab-content active" id="tab-overview">
+            <!-- KPI GRID -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-icon icon-blue"><i class="fa-solid fa-users"></i></div>
+                    <div class="kpi-info">
+                        <span class="kpi-title">Total Sent Links</span>
+                        <h2 class="kpi-value" id="kpi-links">-</h2>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon icon-orange"><i class="fa-solid fa-door-open"></i></div>
+                    <div class="kpi-info">
+                        <span class="kpi-title">Total Opens</span>
+                        <h2 class="kpi-value" id="kpi-opens">-</h2>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon icon-purple"><i class="fa-solid fa-hourglass-half"></i></div>
+                    <div class="kpi-info">
+                        <span class="kpi-title">Avg Active Time</span>
+                        <h2 class="kpi-value" id="kpi-time">-</h2>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon icon-teal"><i class="fa-solid fa-arrow-pointer"></i></div>
+                    <div class="kpi-info">
+                        <span class="kpi-title">Click-Through Rate</span>
+                        <h2 class="kpi-value" id="kpi-ctr">-</h2>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CHARTS GRID -->
+            <div class="charts-grid">
+                <!-- Heatmap (Scroll Attention Chart) -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fa-solid fa-fire icon-orange"></i> Page Reading Heatmap</h3>
+                        <p class="chart-subtitle">Total time spent reading each page across all sessions (seconds)</p>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="pageHeatmapChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Click Interactions Chart -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fa-solid fa-hand-pointer icon-purple"></i> Top Intercepted PDF Clicks</h3>
+                        <p class="chart-subtitle">Most frequently triggered outgoing hyperlinks inside brochure</p>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="clickInteractionsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB CONTENT: LINKS & OUTREACH -->
+        <section class="tab-content" id="tab-links">
+            <div class="links-grid">
+                
+                <!-- PDF upload card -->
+                <div class="form-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-file-pdf icon-teal"></i> Upload PDF Brochure</h3>
+                        <p class="card-subtitle">Upload a brochure file once to generate trackable outreach links.</p>
+                    </div>
+                    
+                    <form id="upload-form" class="card-form">
+                        <div class="form-group">
+                            <label for="pdf-file">Select PDF File</label>
+                            <input type="file" id="pdf-file" accept=".pdf" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="btn-upload">
+                            <i class="fa-solid fa-upload"></i> Upload Brochure
+                        </button>
+                        <div id="upload-feedback" class="feedback-text hidden"></div>
+                    </form>
+                    
+                    <!-- Listed brochures -->
+                    <div class="brochure-list-section">
+                        <h4>Stored Brochures</h4>
+                        <ul class="brochure-list" id="brochure-list">
+                            <li class="loading-li">Loading stored brochures...</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Single link generator card -->
+                <div class="form-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-user-plus icon-blue"></i> Create Single Outreach Link</h3>
+                        <p class="card-subtitle">Generate a custom link for one recipient.</p>
+                    </div>
+                    
+                    <form id="single-link-form" class="card-form">
+                        <div class="form-group">
+                            <label for="select-doc-single">Brochure File</label>
+                            <select id="select-doc-single" required>
+                                <option value="" disabled selected>Select brochure...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="recipient-name">Recipient Name</label>
+                            <input type="text" id="recipient-name" placeholder="e.g. John Doe" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="recipient-email">Recipient Email</label>
+                            <input type="email" id="recipient-email" placeholder="e.g. john@company.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="recipient-company">Recipient Company</label>
+                            <input type="text" id="recipient-company" placeholder="e.g. Acme Corp" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="link-expiry-days">Link Expiration (Days, optional)</label>
+                            <input type="number" id="link-expiry-days" placeholder="e.g. 30" min="1">
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fa-solid fa-link-slash"></i> Generate Link
+                        </button>
+                    </form>
+                    
+                    <!-- Link display container -->
+                    <div class="generated-link-display hidden" id="link-output-container">
+                        <div class="copy-box">
+                            <input type="text" id="generated-url-input" readonly>
+                            <button class="btn btn-copy" id="btn-copy-url"><i class="fa-solid fa-copy"></i> Copy</button>
+                        </div>
+                        <span class="copy-success-text hidden" id="copy-success-hint"><i class="fa-solid fa-circle-check"></i> Copied to clipboard!</span>
+                    </div>
+                </div>
+
+                <!-- Bulk CSV generator card -->
+                <div class="form-card full-width">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-users-gear icon-purple"></i> Bulk Link Generator</h3>
+                        <p class="card-subtitle">Paste a CSV list to instantly get trackable links for your outreach tool (e.g. Instantly, Lemlist, HubSpot).</p>
+                    </div>
+                    
+                    <div class="bulk-generator-layout">
+                        <form id="bulk-link-form" class="card-form">
+                            <div class="form-group">
+                                <label for="select-doc-bulk">Select Brochure</label>
+                                <select id="select-doc-bulk" required>
+                                    <option value="" disabled selected>Select brochure...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="bulk-csv-input">CSV Input (Format: <code>Name,Email,Company</code>)</label>
+                                <textarea id="bulk-csv-input" rows="8" placeholder="John Doe,john@acme.com,Acme Corp&#10;Jane Smith,jane@abc.com,ABC Ltd" required></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="bulk-expiry-days">Link Expiration (Days, optional)</label>
+                                <input type="number" id="bulk-expiry-days" placeholder="e.g. 30" min="1">
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fa-solid fa-network-wired"></i> Bulk Generate Links
+                            </button>
+                        </form>
+                        
+                        <div class="bulk-output-panel hidden" id="bulk-output-panel">
+                            <h4>Copy Outreach CSV Results</h4>
+                            <textarea id="bulk-csv-output" rows="11" readonly></textarea>
+                            <button class="btn btn-secondary" id="btn-copy-bulk"><i class="fa-solid fa-copy"></i> Copy Output CSV</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- TAB CONTENT: ACCESS LOGS -->
+        <section class="tab-content" id="tab-logs">
+            <div class="section-title-bar">
+                <div>
+                    <h2>Outreach Campaign Activity Logs</h2>
+                    <p class="section-subtitle">Real-time engagement activity for all recipient links.</p>
+                </div>
+                <button class="btn btn-refresh" id="btn-refresh-logs">
+                    <i class="fa-solid fa-arrows-rotate"></i> Refresh Logs
+                </button>
+            </div>
+
+            <!-- Filters & Searches -->
+            <div class="logs-filter-bar">
+                <input type="text" id="log-search-input" placeholder="Search by name, company, email...">
+                <select id="log-status-filter">
+                    <option value="all">All Statuses</option>
+                    <option value="opened">Opened Links</option>
+                    <option value="never">Never Opened</option>
+                    <option value="active">Active Links</option>
+                    <option value="expired">Expired Links</option>
+                    <option value="revoked">Revoked Links</option>
+                </select>
+                <select id="log-sort-filter">
+                    <option value="recent">Most Recent Sent</option>
+                    <option value="engaged">Most Engaged (Time)</option>
+                    <option value="views">Most Opened</option>
+                </select>
+            </div>
+
+            <!-- Access logs table -->
+            <div class="table-responsive">
+                <table class="dashboard-table">
+                    <thead>
+                        <tr>
+                            <th>Recipient / Company</th>
+                            <th>Target Document</th>
+                            <th>Link Status</th>
+                            <th>Views</th>
+                            <th>Total Active Time</th>
+                            <th>Completion Rate</th>
+                            <th>Last Activity</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-table-body">
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <i class="fa-solid fa-circle-notch fa-spin"></i> Loading tracking data...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- RECIPIENT JOURNEY TIMELINE MODAL -->
+    <div class="modal-overlay hidden" id="timeline-modal">
+        <div class="modal-card">
+            
+            <div class="modal-header">
+                <div>
+                    <h3 id="modal-recipient-title">Recipient Engagement Profile</h3>
+                    <p class="modal-subtitle" id="modal-recipient-meta">Recipient metadata goes here</p>
+                </div>
+                <button class="modal-close" id="modal-close-btn">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                
+                <div class="modal-split-layout">
+                    
+                    <!-- Left: Analytics and Charts -->
+                    <div class="modal-metrics-pane">
+                        <div class="modal-score-box">
+                            <span class="score-label">Engagement Score</span>
+                            <div class="score-radial">
+                                <span class="score-val" id="modal-engagement-score">--</span>
+                                <span class="score-max">/100</span>
+                            </div>
+                            <span class="score-badge" id="modal-score-eval">High Engagement</span>
+                        </div>
+                        
+                        <div class="modal-kpis">
+                            <div class="m-kpi">
+                                <span class="m-title">Total Opens</span>
+                                <span class="m-val" id="m-kpi-opens">-</span>
+                            </div>
+                            <div class="m-kpi">
+                                <span class="m-title">Active Time</span>
+                                <span class="m-val" id="m-kpi-duration">-</span>
+                            </div>
+                            <div class="m-kpi">
+                                <span class="m-title">PDF Clicks</span>
+                                <span class="m-val" id="m-kpi-clicks">-</span>
+                            </div>
+                        </div>
+
+                        <div class="modal-chart-box">
+                            <h4>Time Spent Per Page (seconds)</h4>
+                            <div class="modal-chart-canvas-wrapper">
+                                <canvas id="recipientPageChart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <!-- List of PDF URL clicks -->
+                        <div class="modal-clicks-box">
+                            <h4>Outgoing Clicks Inside PDF</h4>
+                            <ul class="modal-clicks-list" id="modal-clicks-list">
+                                <li>No clicks logged yet.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Right: Step Journey Timeline -->
+                    <div class="modal-timeline-pane">
+                        <h4>Recipient Action Steps Timeline</h4>
+                        <div class="timeline-container" id="modal-timeline-timeline">
+                            <!-- Chronological steps -->
+                        </div>
+                    </div>
+                    
+                </div>
+                
+            </div>
+        </div>
+    </div>
+
+    <!-- Script imports -->
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
