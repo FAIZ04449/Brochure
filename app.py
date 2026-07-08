@@ -18,7 +18,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "super-secret-key-pdf-tracker-9823
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin")
 
 # Create storage directory for uploaded PDFs
-STORAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'storage')
+STORAGE_DIR = os.environ.get("STORAGE_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), 'storage'))
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
 # Initialize database tables on startup
@@ -91,6 +91,11 @@ def get_ip_geo(ip):
     return 'Unknown', 'Unknown'
 
 # --- PUBLIC ROUTING ---
+
+@app.route('/healthz')
+def healthz():
+    """Health check endpoint for Render/hosting platforms."""
+    return jsonify({'status': 'healthy'}), 200
 
 @app.route('/')
 def home():

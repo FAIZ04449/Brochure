@@ -2,7 +2,7 @@ import sqlite3
 import os
 from datetime import datetime
 
-DATABASE_FILE = 'analytics.db'
+DATABASE_FILE = os.environ.get("DATABASE_PATH", "analytics.db")
 
 def get_connection(db_path=DATABASE_FILE):
     """Returns a connection to the SQLite database with row factory enabled."""
