@@ -641,3 +641,30 @@ def get_click_stats_all(db_path=DATABASE_FILE):
     finally:
         conn.close()
     return stats
+
+def get_recipient_by_session_id(session_id, db_path=DATABASE_FILE):
+    """Retrieves recipient and document details by session ID (session -> link -> recipient/document)."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            SELECT 
+                r.name as recipient_name, 
+                r.email as recipient_email, 
+                r.company as recipient_company,
+                d.filename,
+                l.id as link_id
+            FROM sessions s
+            JOIN links l ON s.link_id = l.id
+            JOIN recipients r ON l.recipient_id = r.id
+            JOIN documents d ON l.document_id = d.id
+            WHERE s.id = ?
+        ''', (session_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except sqlite3.Error as e:
+        print(f"Error getting recipient by session ID: {e}")
+        return None
+    finally:
+        conn.close()
+

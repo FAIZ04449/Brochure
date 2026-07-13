@@ -113,24 +113,36 @@ def send_slack_notification_worker(webhook_url, payload):
                 time.sleep(2)  # Delay 2 seconds before retrying
     print("Failed to send Slack notification after 2 attempts.")
 
-def send_slack_notification_async(link, host_url):
+def send_slack_notification_async(session_id, host_url):
     """Asynchronously triggers Slack open alert in a background thread."""
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
     if not webhook_url:
         print("Slack notification bypassed: SLACK_WEBHOOK_URL env variable is not set.")
         return
         
-    link_id = link['link_id']
-    name = link['recipient_name']
-    email = link['recipient_email']
-    company = link['recipient_company']
-    filename = link['filename']
+    recipient_info = database.get_recipient_by_session_id(session_id)
+    if not recipient_info:
+        print(f"Slack notification bypassed: no recipient found for session {session_id}")
+        return
+        
+    link_id = recipient_info['link_id']
+    name = recipient_info['recipient_name']
+    email = recipient_info['recipient_email']
+    company = recipient_info['recipient_company']
+    filename = recipient_info['filename']
     
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S Local Time")
     dashboard_link = f"{host_url}dashboard?link_id={link_id}"
     
+    message_content = f"Brochure opened by {name} ({email}) at {company}"
+    
     payload = {
-        "text": f"Brochure opened by {name} ({email}) at {company}",
+        "message": message_content,
+        "text": message_content,
+        "name": name,
+        "email": email,
+        "company": company,
+        "filename": filename,
         "blocks": [
             {
                 "type": "section",
@@ -251,7 +263,7 @@ def api_session_start():
     
     if success:
         if is_first_open:
-            send_slack_notification_async(link, request.host_url)
+            send_slack_notification_async(session_id, request.host_url)
         return jsonify({'status': 'success', 'session_id': session_id}), 201
     return jsonify({'error': 'Session initialization failed'}), 500
 
