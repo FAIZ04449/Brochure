@@ -706,7 +706,9 @@ def get_recipient_by_session_id(session_id, db_path=DATABASE_FILE):
                 r.email as recipient_email, 
                 r.company as recipient_company,
                 d.filename,
-                l.id as link_id
+                l.id as link_id,
+                s.geo_country,
+                s.geo_city
             FROM sessions s
             JOIN links l ON s.link_id = l.id
             JOIN recipients r ON l.recipient_id = r.id

@@ -131,10 +131,19 @@ def send_slack_notification_async(session_id, host_url):
     company = recipient_info['recipient_company']
     filename = recipient_info['filename']
     
+    country = recipient_info.get('geo_country') or 'Unknown Country'
+    city = recipient_info.get('geo_city') or 'Unknown City'
+    location = f"{city}, {country}" if city != 'Unknown City' else country
+    
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S Local Time")
     dashboard_link = f"{host_url}dashboard?link_id={link_id}"
     
-    message_content = f"Brochure opened by {name} ({email}) at {company}"
+    message_content = (
+        f"Brochure '{filename}' opened by {name} ({email}) at {company}.\n"
+        f"Location: {location}\n"
+        f"Time spent on pages: Page 1: 0s (just opened)\n"
+        f"URLs opened: None"
+    )
     
     payload = {
         "message": message_content,
@@ -143,12 +152,16 @@ def send_slack_notification_async(session_id, host_url):
         "email": email,
         "company": company,
         "filename": filename,
+        "brochure_name": filename,
+        "location": location,
+        "time_spent": "Page 1: 0s (just opened)",
+        "urls_opened": "None",
         "blocks": [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Brochure Opened* 📄\n*Document:* `{filename}`\n*Recipient:* {name} (<mailto:{email}|{email}>) at *{company}*\n*Opened at:* {timestamp}\n<{dashboard_link}|*View Journey Details in Dashboard*>"
+                    "text": f"*Brochure Opened* 📄\n*Document:* `{filename}`\n*Recipient:* {name} (<mailto:{email}|{email}>) at *{company}*\n*Location:* {location}\n*Opened at:* {timestamp}\n<{dashboard_link}|*View Journey Details in Dashboard*>"
                 }
             }
         ]
