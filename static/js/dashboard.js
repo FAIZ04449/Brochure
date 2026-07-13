@@ -334,9 +334,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusBadge = '<span class="status-badge status-never">Never Opened</span>';
             }
 
-            // Completion percentage estimation (assuming 4 page brochure default)
+            // Completion percentage estimation dynamically based on document's total pages
+            const totalPages = log.total_pages || 4;
             const completionPct = log.open_count > 0 
-                ? Math.round((log.unique_pages_viewed / 4.0) * 100) 
+                ? Math.round((log.unique_pages_viewed / totalPages) * 100) 
                 : 0;
 
             const completionHTML = log.open_count > 0 ? `
@@ -345,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="depth-bar-bg">
                         <div class="depth-bar-fill" style="width: ${Math.min(completionPct, 100)}%"></div>
                     </div>
-                    <span class="depth-detail">${log.unique_pages_viewed}/4 pgs</span>
+                    <span class="depth-detail">${log.unique_pages_viewed}/${totalPages} pgs</span>
                 </div>
             ` : '<span class="text-muted">-</span>';
 
@@ -442,9 +443,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const outgoingClicks = clicks.filter(c => !c.target_url.startsWith('UI-Click'));
             mKpiClicks.textContent = outgoingClicks.length;
 
-            // Compute Engagement Score
+            // Compute Engagement Score dynamically based on document's total pages
             const pagesViewed = Object.keys(pageDurations).length;
-            const brochurePagesCount = 4; // default sample
+            const brochurePagesCount = data.total_pages || 4;
             const completionPct = Math.min(100, Math.round((pagesViewed / brochurePagesCount) * 100));
             
             let score = Math.round((completionPct * 0.6) + (Math.min(totalDurationSecs, 180) / 180 * 30));
@@ -463,8 +464,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 modalScoreEval.classList.add('cold');
             }
 
-            // Render Page Durations Chart
-            renderRecipientChart(pageDurations);
+            // Render Page Durations Chart dynamically
+            renderRecipientChart(pageDurations, brochurePagesCount);
 
             // Populate Clicks List
             populateClicksList(clicks);
@@ -478,15 +479,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderRecipientChart(durations) {
+    function renderRecipientChart(durations, totalPages = 4) {
         const ctx = document.getElementById('recipientPageChart').getContext('2d');
-        const labels = ['Page 1', 'Page 2', 'Page 3', 'Page 4'];
-        const values = [
-            durations[1] || 0,
-            durations[2] || 0,
-            durations[3] || 0,
-            durations[4] || 0
-        ];
+        const labels = [];
+        const values = [];
+        for (let i = 1; i <= totalPages; i++) {
+            labels.push(`Page ${i}`);
+            values.push(durations[i] || 0);
+        }
 
         modalChart = new Chart(ctx, {
             type: 'bar',

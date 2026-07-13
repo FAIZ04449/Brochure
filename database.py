@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import re
 from datetime import datetime
 
 DATABASE_FILE = os.environ.get("DATABASE_PATH", "analytics.db")
@@ -12,6 +13,25 @@ def get_connection(db_path=DATABASE_FILE):
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
+def get_pdf_page_count(file_path):
+    """Robustly counts total pages in a PDF file by parsing binary content."""
+    try:
+        if not file_path or not os.path.exists(file_path):
+            return 4
+        with open(file_path, 'rb') as f:
+            content = f.read()
+        # 1. Search for /Count
+        matches = re.findall(br'/Count\s*(\d+)', content)
+        if matches:
+            return max(int(m) for m in matches)
+        # 2. Search for /Type /Page
+        page_matches = re.findall(br'/Type\s*/Page\b', content)
+        if page_matches:
+            return len(page_matches)
+    except Exception as e:
+        print(f"Error reading PDF page count for {file_path}: {e}")
+    return 4  # Default fallback
+
 def init_db(db_path=DATABASE_FILE):
     """Initializes the database schema if it doesn't already exist."""
     conn = get_connection(db_path)
@@ -23,9 +43,28 @@ def init_db(db_path=DATABASE_FILE):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             filename TEXT NOT NULL,
             storage_path TEXT NOT NULL,
+            total_pages INTEGER,
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Alter table if existing database does not have total_pages
+    try:
+        cursor.execute("ALTER TABLE documents ADD COLUMN total_pages INTEGER;")
+    except sqlite3.OperationalError:
+        pass
+
+    # Migrate any existing NULL total_pages
+    try:
+        cursor.execute("SELECT id, storage_path FROM documents WHERE total_pages IS NULL")
+        rows = cursor.fetchall()
+        for row in rows:
+            pages = get_pdf_page_count(row['storage_path'])
+            cursor.execute("UPDATE documents SET total_pages = ? WHERE id = ?", (pages, row['id']))
+        if rows:
+            conn.commit()
+    except Exception as e:
+        print(f"Migration error for total_pages: {e}")
 
     # 2. Recipients table
     cursor.execute('''
@@ -101,13 +140,14 @@ def init_db(db_path=DATABASE_FILE):
 # --- Helper functions for documents ---
 
 def add_document(filename, storage_path, db_path=DATABASE_FILE):
+    total_pages = get_pdf_page_count(storage_path)
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
         cursor.execute('''
-            INSERT INTO documents (filename, storage_path)
-            VALUES (?, ?)
-        ''', (filename, storage_path))
+            INSERT INTO documents (filename, storage_path, total_pages)
+            VALUES (?, ?, ?)
+        ''', (filename, storage_path, total_pages))
         conn.commit()
         return cursor.lastrowid
     except sqlite3.Error as e:
@@ -432,6 +472,7 @@ def get_all_recipient_logs(db_path=DATABASE_FILE):
                 r.email as recipient_email,
                 r.company as recipient_company,
                 d.filename as document_name,
+                d.total_pages as total_pages,
                 COUNT(s.id) as open_count,
                 COALESCE(SUM(s.total_active_seconds), 0) as total_time_spent,
                 MAX(s.ended_at) as last_activity,
@@ -545,9 +586,21 @@ def get_recipient_session_details(link_id, db_path=DATABASE_FILE):
     details = {
         'sessions': [],
         'page_durations': {},
-        'clicks': []
+        'clicks': [],
+        'total_pages': 4
     }
     try:
+        # Get total pages of the document
+        cursor.execute('''
+            SELECT d.total_pages
+            FROM links l
+            JOIN documents d ON l.document_id = d.id
+            WHERE l.id = ?
+        ''', (link_id,))
+        doc_row = cursor.fetchone()
+        if doc_row and doc_row['total_pages']:
+            details['total_pages'] = doc_row['total_pages']
+
         # Get sessions
         cursor.execute('''
             SELECT * FROM sessions 
