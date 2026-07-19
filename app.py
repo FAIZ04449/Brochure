@@ -187,6 +187,17 @@ def send_slack_notification_async(session_id, host_url):
     # Get the shared recipient link
     shared_link = f"{host_url}v/{recipient_info['token']}" if recipient_info.get('token') else ""
 
+    # Combined message text fallback for workflows mapping a single "message" variable
+    full_message_text = (
+        f"Document Link Opened 🚀\n"
+        f"Recipient: {name} ({email}) at {company}\n"
+        f"Location: {location}\n"
+        f"Bundle Items: {filename}\n"
+        f"Opened at: {timestamp}\n\n"
+        f"Engagement History & Prior Activity Summary:\n{activity_summary}\n\n"
+        f"View Detailed Engagement Journey on Dashboard: {dashboard_link}"
+    )
+
     payload = {
         "text": message_content,
         "blocks": [
@@ -207,6 +218,7 @@ def send_slack_notification_async(session_id, host_url):
             }
         ],
         # Flat root-level parameters for Slack Workflow Builder mapping variables
+        "message": full_message_text,
         "name": name,
         "recipient_name": name,
         "email": email,
