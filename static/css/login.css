@@ -1,11 +1,11 @@
 :root {
-    --bg-dark: #0f1013;
-    --card-dark: #191b20;
-    --border-color: #2b2e36;
-    --text-primary: #f1f2f4;
-    --text-muted: #848995;
-    --accent-color: #8b5cf6;
-    --accent-hover: #7c3aed;
+    --bg-dark: #f8fafc;
+    --card-dark: #ffffff;
+    --border-color: #e2e8f0;
+    --text-primary: #0f172a;
+    --text-muted: #64748b;
+    --accent-color: #4287f5;
+    --accent-hover: #2563eb;
     --error-color: #ef4444;
 }
 
@@ -51,15 +51,11 @@ body.login-body {
     gap: 0.25rem;
 }
 
-.brand-logo {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 1.8rem;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-}
-
-.brand-logo .accent {
-    color: var(--accent-color);
+.login-logo-img {
+    height: 38px;
+    width: auto;
+    display: block;
+    margin: 0 auto 0.4rem;
 }
 
 .sub-logo {
@@ -103,7 +99,7 @@ body.login-body {
 
 .input-group input {
     width: 100%;
-    background-color: #202228;
+    background-color: #ffffff;
     border: 1px solid var(--border-color);
     border-radius: 6px;
     padding: 0.75rem 1rem;

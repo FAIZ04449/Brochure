@@ -401,6 +401,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             <i class="fa-solid fa-route"></i> Journey
                         </button>
                         ${!isRevoked ? `
+                            <button class="btn btn-copy-link btn-table" data-token="${log.token}" style="background: rgba(66, 135, 245, 0.08); color: var(--accent-color); border: 1px solid rgba(66, 135, 245, 0.25);">
+                                <i class="fa-solid fa-copy"></i> Copy Link
+                            </button>
                             <button class="btn btn-revoke btn-table" data-token="${log.token}">
                                 <i class="fa-solid fa-ban"></i> Revoke
                             </button>
@@ -410,6 +413,31 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             
             logsTableBody.appendChild(tr);
+        });
+
+        // Wire up copy buttons
+        document.querySelectorAll('.btn-copy-link').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const token = btn.getAttribute('data-token');
+                const linkUrl = `${window.location.origin}/v/${token}`;
+                
+                navigator.clipboard.writeText(linkUrl).then(() => {
+                    const originalHTML = btn.innerHTML;
+                    btn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Copied!';
+                    btn.style.background = 'rgba(16, 185, 129, 0.1)';
+                    btn.style.color = '#10b981';
+                    btn.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                    
+                    setTimeout(() => {
+                        btn.innerHTML = originalHTML;
+                        btn.style.background = '';
+                        btn.style.color = '';
+                        btn.style.borderColor = '';
+                    }, 2000);
+                }).catch(err => {
+                    alert('Failed to copy link: ' + err);
+                });
+            });
         });
 
         document.querySelectorAll('.btn-journey').forEach(btn => {

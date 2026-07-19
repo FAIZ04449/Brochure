@@ -1,23 +1,24 @@
-/* ═══════════════════════════════════════════════
-   Pibit.ai Tracking Hub — Viewer Stylesheet
-   ═══════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Pibit.ai Tracking Hub â€” Viewer Stylesheet
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 :root {
-    --bg-dark:       #0d0e11;
-    --panel-dark:    #1a1c22;
-    --border-color:  #2a2d36;
-    --text-primary:  #e8eaf0;
-    --text-muted:    #8c919c;
-    --accent-color:  #8b5cf6;
-    --accent-hover:  #7c3aed;
-    --btn-bg:        #252830;
-    --btn-hover:     #32363f;
+    --bg-dark:       #f4f6f9;
+    --panel-dark:    #ffffff;
+    --border-color:  #e2e8f0;
+    --text-primary:  #0f172a;
+    --text-muted:    #64748b;
+    --accent-color:  #4287f5;
+    --accent-hover:  #2563eb;
+    --btn-bg:        #f1f5f9;
+    --btn-hover:     #e2e8f0;
 
     /* glassmorphism taskbar */
-    --glass-bg:      rgba(18, 20, 28, 0.72);
-    --glass-border:  rgba(255, 255, 255, 0.08);
-    --glass-shadow:  0 8px 32px rgba(0, 0, 0, 0.55);
+    --glass-bg:      rgba(255, 255, 255, 0.78);
+    --glass-border:  rgba(0, 0, 0, 0.06);
+    --glass-shadow:  0 8px 32px rgba(15, 23, 42, 0.08);
     --taskbar-h:     60px;
 }
+
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -32,7 +33,7 @@ body.viewer-body {
     overflow: hidden;
 }
 
-/* ─── HUB LAYOUT ─── */
+/* â”€â”€â”€ HUB LAYOUT â”€â”€â”€ */
 .hub-layout {
     display: flex;
     flex-direction: column;
@@ -41,7 +42,7 @@ body.viewer-body {
     position: relative;
 }
 
-/* ─── GLASSMORPHISM TASKBAR (replaces sidebar) ─── */
+/* â”€â”€â”€ GLASSMORPHISM TASKBAR (replaces sidebar) â”€â”€â”€ */
 .hub-sidebar {
     position: fixed;
     top: 0;
@@ -108,7 +109,7 @@ body.viewer-body {
     white-space: nowrap;
     flex-shrink: 0;
     border: 1px solid transparent;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(0, 0, 0, 0.03);
     color: var(--text-muted);
     font-size: 0.82rem;
     font-weight: 500;
@@ -117,16 +118,16 @@ body.viewer-body {
 }
 
 .hub-nav-item:hover {
-    background: rgba(255, 255, 255, 0.09);
+    background: rgba(0, 0, 0, 0.06);
     color: var(--text-primary);
     transform: translateY(-1px);
 }
 
 .hub-nav-item.active {
-    background: rgba(139, 92, 246, 0.18);
-    border-color: rgba(139, 92, 246, 0.5);
-    color: #c4b5fd;
-    box-shadow: 0 0 12px rgba(139, 92, 246, 0.2);
+    background: rgba(66, 135, 245, 0.12);
+    border-color: rgba(66, 135, 245, 0.4);
+    color: var(--accent-color);
+    box-shadow: 0 0 12px rgba(66, 135, 245, 0.15);
 }
 
 .hub-nav-item-icon {
@@ -140,7 +141,7 @@ body.viewer-body {
     max-width: 160px;
 }
 
-/* ─── MAIN CONTENT (full screen below the taskbar) ─── */
+/* â”€â”€â”€ MAIN CONTENT (full screen below the taskbar) â”€â”€â”€ */
 .hub-main {
     flex: 1;
     display: flex;
@@ -150,17 +151,17 @@ body.viewer-body {
     padding-top: var(--taskbar-h); /* push content below the fixed taskbar */
 }
 
-/* ─── VIEWER TOOLBAR (PDF controls bar — floating overlay) ─── */
+/* â”€â”€â”€ VIEWER TOOLBAR (PDF controls bar â€” floating overlay) â”€â”€â”€ */
 .viewer-toolbar {
     position: absolute;
     top: 60px; /* Floating below taskbar */
     left: 0;
     right: 0;
     height: 46px;
-    background: rgba(13, 14, 17, 0.78);
+    background: rgba(255, 255, 255, 0.85);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -198,7 +199,7 @@ body.viewer-body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: rgba(255,255,255,0.55);
+    color: var(--text-muted);
 }
 
 .toolbar-center {
@@ -265,7 +266,7 @@ body.viewer-body {
     color: var(--text-muted);
 }
 
-/* ─── VIEWER CONTENT AREA ─── */
+/* â”€â”€â”€ VIEWER CONTENT AREA â”€â”€â”€ */
 .viewer-container {
     position: absolute;    /* fills the entire hub-main */
     inset: 0;
@@ -277,7 +278,7 @@ body.viewer-body {
     background: var(--bg-dark);
 }
 
-/* ─── PDF ─── */
+/* â”€â”€â”€ PDF â”€â”€â”€ */
 .pdf-page-container {
     position: relative;
     box-shadow: 0 16px 48px -8px rgba(0, 0, 0, 0.75);
@@ -315,7 +316,7 @@ body.viewer-body {
     outline: 1.5px dashed var(--accent-color);
 }
 
-/* ─── Loading Spinner ─── */
+/* â”€â”€â”€ Loading Spinner â”€â”€â”€ */
 .loading-spinner {
     display: flex;
     flex-direction: column;
@@ -343,7 +344,7 @@ body.viewer-body {
 
 .hidden { display: none !important; }
 
-/* ─── Video & Iframe ─── */
+/* â”€â”€â”€ Video & Iframe â”€â”€â”€ */
 .video-container {
     width: 100%;
     max-width: 1200px;
@@ -363,7 +364,7 @@ body.viewer-body {
 .iframe-container { width: 100%; height: 100%; }
 .iframe-container iframe { width: 100%; height: 100%; border: none; background: #fff; }
 
-/* ─── Footer ─── */
+/* â”€â”€â”€ Footer â”€â”€â”€ */
 .viewer-footer {
     height: 32px;
     background: rgba(18, 20, 26, 0.9);
@@ -382,7 +383,7 @@ body.viewer-body {
 }
 .privacy-note i { color: var(--accent-color); }
 
-/* ─── Scroll indicator arrows on taskbar ─── */
+/* â”€â”€â”€ Scroll indicator arrows on taskbar â”€â”€â”€ */
 .taskbar-scroll-btn {
     flex-shrink: 0;
     background: rgba(255,255,255,0.06);
@@ -401,7 +402,7 @@ body.viewer-body {
 .taskbar-scroll-btn:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
 .taskbar-scroll-btn.hidden { display: none !important; }
 
-/* ─── Mobile ─── */
+/* â”€â”€â”€ Mobile â”€â”€â”€ */
 @media (max-width: 640px) {
     :root { --taskbar-h: 54px; }
 
