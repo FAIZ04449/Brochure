@@ -49,6 +49,11 @@
     let activeSecondsTimer = null;
     const IDLE_TIMEOUT_MS = 30000; // 30 seconds
 
+    // Video play watch state tracking
+    let videoWatchTime = 0;
+    let isVideoPlaying = false;
+
+
     // Toolbar auto-hide state
     const toolbar = document.getElementById('main-toolbar');
     let toolbarHideTimer = null;
@@ -158,6 +163,9 @@
         activeDocumentType = doc.doc_type;
         activeDocumentName = doc.filename;
         activeTime = 0; // Reset timer
+        videoWatchTime = 0; // Reset video active watch timer
+        isVideoPlaying = false; // Reset video playing state
+
 
         // Update UI
         document.querySelectorAll('.hub-nav-item').forEach(el => {
@@ -237,8 +245,19 @@
         video.style.width = '100%';
         video.style.borderRadius = '8px';
         
-        video.addEventListener('play', () => logComponentEvent('play'));
-        video.addEventListener('pause', () => logComponentEvent('pause'));
+        video.addEventListener('play', () => {
+            isVideoPlaying = true;
+            logComponentEvent('play');
+        });
+        video.addEventListener('pause', () => {
+            isVideoPlaying = false;
+            logComponentEvent('pause');
+        });
+        video.addEventListener('ended', () => {
+            isVideoPlaying = false;
+            logComponentEvent('ended');
+        });
+
 
         videoContainer.appendChild(video);
         loadingSpinner.classList.add('hidden');
@@ -459,6 +478,10 @@
         activeSecondsTimer = setInterval(() => {
             if (document.visibilityState === 'visible' && !isIdle) {
                 activeTime += 1;
+                // Increment video play timer only if a video is actively playing
+                if (activeDocumentType === 'video' && isVideoPlaying) {
+                    videoWatchTime += 1;
+                }
             }
         }, 1000);
 
@@ -474,6 +497,8 @@
             if (document.visibilityState === 'hidden') {
                 flushCurrentTelemetry();
                 activeTime = 0;
+                // pause video states
+                isVideoPlaying = false;
             }
         });
 
@@ -492,6 +517,8 @@
         clearTimeout(idleTimer);
         idleTimer = setTimeout(() => {
             isIdle = true;
+            // If they go idle, also stop tracking video watch duration
+            isVideoPlaying = false;
         }, IDLE_TIMEOUT_MS);
     }
 
@@ -508,13 +535,25 @@
             const url = `/api/sessions/${sessionId}/page-event`;
             sendBeaconOrFetch(url, payload);
         } else {
-            const payload = JSON.stringify({ 
+            // General page view duration on the component tab
+            let payload = JSON.stringify({ 
                 document_id: docId, 
                 event_type: `${type}_view`, 
                 active_seconds: time 
             });
-            const url = `/api/sessions/${sessionId}/component-event`;
+            let url = `/api/sessions/${sessionId}/component-event`;
             sendBeaconOrFetch(url, payload);
+
+            // If it is a video and was actually played, log the exact playback duration separately
+            if (type === 'video' && videoWatchTime > 0) {
+                const playPayload = JSON.stringify({
+                    document_id: docId,
+                    event_type: 'video_watch_duration',
+                    active_seconds: videoWatchTime
+                });
+                sendBeaconOrFetch(url, playPayload);
+                videoWatchTime = 0; // Reset
+            }
         }
     }
 
