@@ -248,22 +248,79 @@
     function loadLinkDocument(doc) {
         let meta = {};
         try { meta = JSON.parse(doc.metadata || '{}'); } catch(e){}
-        const targetUrl = meta.url || '';
+        let targetUrl = (meta.url || '').trim();
         
         if (!targetUrl) {
             showError("External link URL is missing.");
             return;
         }
 
-        const iframe = document.createElement('iframe');
-        iframe.src = targetUrl;
-        iframe.allowFullscreen = true;
-        iframe.title = doc.filename;
-        
-        iframeContainer.appendChild(iframe);
+        // --- URL Conversions for Embed Support ---
+        let embeddableUrl = targetUrl;
+        let isEmbeddable = false;
+
+        // 1. YouTube Conversion
+        let ytMatch = targetUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\s\?]+)/);
+        if (ytMatch) {
+            embeddableUrl = `https://www.youtube.com/embed/${ytMatch[1]}`;
+            isEmbeddable = true;
+        }
+        // 2. Google Drive File View Conversion
+        else if (targetUrl.includes('drive.google.com/file/d/')) {
+            let gdMatch = targetUrl.match(/drive\.google\.com\/file\/d\/([^\/\?\s]+)/);
+            if (gdMatch) {
+                embeddableUrl = `https://drive.google.com/file/d/${gdMatch[1]}/preview`;
+                isEmbeddable = true;
+            }
+        }
+        // 3. Known embeddable platforms
+        else if (
+            targetUrl.includes('figma.com/file/') || 
+            targetUrl.includes('canva.com/design/') || 
+            targetUrl.includes('miro.com/app/board/') ||
+            targetUrl.includes('google.com/presentation/d/')
+        ) {
+            isEmbeddable = true;
+        }
+
         loadingSpinner.classList.add('hidden');
-        iframeContainer.classList.remove('hidden');
+
+        if (isEmbeddable) {
+            // Embed directly in iframe
+            const iframe = document.createElement('iframe');
+            iframe.src = embeddableUrl;
+            iframe.allowFullscreen = true;
+            iframe.title = doc.filename;
+            
+            iframeContainer.appendChild(iframe);
+            iframeContainer.classList.remove('hidden');
+        } else {
+            // Show a beautiful portal card for non-embeddable links
+            const card = document.createElement('div');
+            card.className = 'external-link-card';
+            card.innerHTML = `
+                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                <h3>${escapeHTML(doc.filename)}</h3>
+                <p>This resource is hosted externally on another website. Click below to launch and read it in a new window.</p>
+                <a href="${escapeHTML(targetUrl)}" class="btn-external-launch" target="_blank" id="launch-link-btn">
+                    Open Document <i class="fa-solid fa-chevron-right"></i>
+                </a>
+            `;
+
+            // Track direct link opening in telemetry
+            const launchBtn = card.querySelector('#launch-link-btn');
+            if (launchBtn) {
+                launchBtn.addEventListener('click', () => {
+                    logClick(0, targetUrl); // logs external click
+                    logComponentEvent('link_opened', targetUrl);
+                });
+            }
+
+            iframeContainer.appendChild(card);
+            iframeContainer.classList.remove('hidden');
+        }
     }
+
 
     // --- PDF Render Logic ---
 
