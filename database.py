@@ -75,10 +75,16 @@ def init_db(db_path=DATABASE_FILE):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             expires_at TIMESTAMP,
             revoked_at TIMESTAMP,
+            slack_thread_ts TEXT,
             FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE SET NULL,
             FOREIGN KEY (recipient_id) REFERENCES recipients (id) ON DELETE CASCADE
         )
     ''')
+    try:
+        cursor.execute("ALTER TABLE links ADD COLUMN slack_thread_ts TEXT;")
+    except sqlite3.OperationalError:
+        pass
+
 
     # 3.5. Link Documents (Many-to-many)
     cursor.execute('''
@@ -821,8 +827,8 @@ def get_link_activity_summary(link_id, db_path=DATABASE_FILE):
         else:
             time_str = f"{total_time}s"
             
-        summary.append(f"• *Total visits:* {session_count} times")
-        summary.append(f"• *Total time spent:* {time_str}")
+        summary.append(f"â€¢ *Total visits:* {session_count} times")
+        summary.append(f"â€¢ *Total time spent:* {time_str}")
 
         # Get pages read
         cursor.execute('''
@@ -885,3 +891,31 @@ def get_link_activity_summary(link_id, db_path=DATABASE_FILE):
     if not summary or session_count <= 1:
         return "No prior activities recorded (this is their first visit!)."
     return "\n".join(summary)
+
+def set_link_slack_thread_ts(link_id, thread_ts, db_path=DATABASE_FILE):
+    """Sets the Slack message thread timestamp (ts) for a specific link."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE links SET slack_thread_ts = ? WHERE id = ?", (thread_ts, link_id))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error setting slack_thread_ts: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_link_slack_thread_ts(link_id, db_path=DATABASE_FILE):
+    """Gets the Slack message thread timestamp (ts) for a specific link."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT slack_thread_ts FROM links WHERE id = ?", (link_id,))
+        row = cursor.fetchone()
+        return row['slack_thread_ts'] if row else None
+    except Exception as e:
+        print(f"Error getting slack_thread_ts: {e}")
+        return None
+    finally:
+        conn.close()

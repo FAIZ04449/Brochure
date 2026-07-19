@@ -59,6 +59,16 @@ try:
 except Exception as _e:
     print(f"WAL mode setup warning: {_e}")
 
+@app.after_request
+def add_header(r):
+    """Disable caching for all API endpoints to prevent stale data on refresh."""
+    if request.path.startswith('/api/'):
+        r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        r.headers["Pragma"] = "no-cache"
+        r.headers["Expires"] = "0"
+    return r
+
+
 # --- Simple In-Memory Rate Limiter ---
 rate_limit_store = defaultdict(list)
 RATE_LIMIT_MAX = 60  # max requests
@@ -102,7 +112,7 @@ def admin_required(f):
 _geo_cache = {}  # simple in-memory cache
 
 def get_ip_geo(ip):
-    """Sync geo lookup — only called in background thread."""
+    """Sync geo lookup â€” only called in background thread."""
     if not ip or ip in ('127.0.0.1', '::1') or ip.startswith('192.168.') or ip.startswith('10.'):
         return 'Local Network', 'Localhost'
     if ip in _geo_cache:
@@ -140,25 +150,66 @@ def _resolve_geo_and_notify(session_id, ip_address, host_url, is_first_open):
 
 # --- SLACK NOTIFICATIONS ON EVERY OPEN ---
 
-def send_slack_notification_worker(webhook_url, payload):
-    data = json.dumps(payload).encode('utf-8')
-    headers = {'Content-Type': 'application/json'}
-    req = urllib.request.Request(webhook_url, data=data, headers=headers)
-    for attempt in range(2):
+def send_slack_notification_worker(bot_token, channel_id, webhook_url, payload, link_id):
+    headers = {'Content-Type': 'application/json; charset=utf-8'}
+    thread_ts = database.get_link_slack_thread_ts(link_id)
+    success = False
+    
+    if bot_token and channel_id:
+        print(f"[Slack Bot API] Attempting to send message to channel {channel_id} (thread_ts: {thread_ts})...", flush=True)
+        url = "https://slack.com/api/chat.postMessage"
+        headers['Authorization'] = f"Bearer {bot_token}"
+        
+        api_payload = {
+            "channel": channel_id,
+            "text": payload.get("text"),
+            "blocks": payload.get("blocks")
+        }
+        if thread_ts:
+            api_payload["thread_ts"] = thread_ts
+            
+        data = json.dumps(api_payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers)
+        
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                resp_data = json.loads(resp.read().decode('utf-8'))
+                if resp.status == 200 and resp_data.get('ok'):
+                    print("Slack notification sent successfully via Bot Web API.", flush=True)
+                    if not thread_ts and resp_data.get('ts'):
+                        database.set_link_slack_thread_ts(link_id, resp_data.get('ts'))
+                    success = True
+                else:
+                    print(f"[Slack Error] Web API returned ok=false: {resp_data.get('error')}. (Ensure the bot is added to the channel!)", flush=True)
+        except Exception as e:
+            print(f"[Slack Error] Web API request failed: {e}", flush=True)
+            
+    if not success and webhook_url:
+        print(f"[Slack Webhook] Falling back to Webhook URL (thread_ts: {thread_ts})...", flush=True)
+        # Reset headers for standard webhook format
+        webhook_headers = {'Content-Type': 'application/json'}
+        if thread_ts:
+            payload["thread_ts"] = thread_ts
+            
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(webhook_url, data=data, headers=webhook_headers)
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status in (200, 204):
-                    print("Slack notification sent successfully.")
-                    return
+                    print("Slack notification sent successfully via Webhook.", flush=True)
                 else:
-                    print(f"Slack webhook returned non-200 status: {resp.status}")
+                    print(f"Slack webhook returned non-200 status: {resp.status}", flush=True)
         except Exception as e:
-            if attempt == 0: time.sleep(2)
-    print("Failed to send Slack notification after 2 attempts.")
+            print(f"Slack webhook exception: {e}", flush=True)
 
 def send_slack_notification_async(session_id, host_url):
+    bot_token = os.environ.get("SLACK_BOT_TOKEN")
+    channel_id = os.environ.get("SLACK_CHANNEL")
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
-    if not webhook_url: return
+    
+    print(f"[SLACK DIAGNOSTIC] bot_token present: {bool(bot_token)} (starts with: {bot_token[:10] if bot_token else 'None'}), channel_id: {channel_id}, webhook_url present: {bool(webhook_url)}", flush=True)
+    
+    if not bot_token and not webhook_url: return
         
     recipient_info = database.get_recipient_by_session_id(session_id)
     if not recipient_info: return
@@ -234,7 +285,11 @@ def send_slack_notification_async(session_id, host_url):
         "bundle": filename,
         "overview": activity_summary
     }
-    threading.Thread(target=send_slack_notification_worker, args=(webhook_url, payload), daemon=True).start()
+    threading.Thread(
+        target=send_slack_notification_worker, 
+        args=(bot_token, channel_id, webhook_url, payload, link_id), 
+        daemon=True
+    ).start()
 
 # --- PUBLIC ROUTING ---
 
@@ -331,19 +386,19 @@ def api_session_start():
     user_agent = request.headers.get('User-Agent', 'Unknown')
     is_first_open = (database.get_session_count_for_link(link['link_id']) == 0)
 
-    # Create session immediately with placeholder geo — fill in async
+    # Create session immediately with placeholder geo â€” fill in async
     session_id = secrets.token_hex(16)
     success = database.create_session(
         session_id=session_id,
         link_id=link['link_id'],
         ip_address=ip_address,
         user_agent=user_agent,
-        country='Resolving…',
-        city='Resolving…'
+        country='Resolvingâ€¦',
+        city='Resolvingâ€¦'
     )
     
     if success:
-        # Geo lookup + Slack in background — does NOT block response
+        # Geo lookup + Slack in background â€” does NOT block response
         threading.Thread(
             target=_resolve_geo_and_notify,
             args=(session_id, ip_address, request.host_url, is_first_open),
@@ -480,7 +535,7 @@ def api_admin_analytics():
 @app.route('/api/admin/analytics/charts', methods=['GET'])
 @admin_required
 def api_admin_analytics_charts():
-    """Separate endpoint for heavier chart data — loaded after main data."""
+    """Separate endpoint for heavier chart data â€” loaded after main data."""
     global_page_stats = database.get_page_stats_all()
     global_click_stats = database.get_click_stats_all()
     return jsonify({
@@ -548,6 +603,40 @@ def api_admin_add_link_doc():
         return jsonify({'error': 'Failed to add link document'}), 500
     except Exception as e:
         return jsonify({'error': f"Error adding link: {str(e)}"}), 500
+
+@app.route('/api/admin/slack-test', methods=['GET'])
+@admin_required
+def api_admin_slack_test():
+    bot_token = os.environ.get("SLACK_BOT_TOKEN")
+    channel_id = os.environ.get("SLACK_CHANNEL")
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    
+    status = {
+        'bot_token_configured': bool(bot_token),
+        'bot_token_prefix': bot_token[:10] if bot_token else None,
+        'channel_id': channel_id,
+        'webhook_url_configured': bool(webhook_url),
+        'webhook_url_prefix': webhook_url[:30] if webhook_url else None,
+    }
+    
+    bot_test = "Not tested"
+    if bot_token:
+        try:
+            url = "https://slack.com/api/auth.test"
+            req = urllib.request.Request(url, headers={'Authorization': f"Bearer {bot_token}"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+                bot_test = {
+                    'ok': data.get('ok'),
+                    'error': data.get('error'),
+                    'bot_name': data.get('user'),
+                    'team': data.get('team')
+                }
+        except Exception as e:
+            bot_test = f"Request failed: {e}"
+            
+    status['bot_auth_test'] = bot_test
+    return jsonify(status), 200
 
 @app.route('/api/admin/generate-link', methods=['POST'])
 @admin_required

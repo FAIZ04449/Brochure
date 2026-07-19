@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (targetTab === 'overview' || targetTab === 'logs') {
                 loadAnalyticsData();
             }
-            // Charts were skipped if canvas wasn't visible on first load — render now
+            // Charts were skipped if canvas wasn't visible on first load â€” render now
             if (targetTab === 'overview') {
                 loadChartData();
             }
@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- API Calls ---
 
     async function loadAnalyticsData() {
-        // Phase 1: Fast data — KPIs, logs, documents (renders the page immediately)
+        // Phase 1: Fast data â€” KPIs, logs, documents (renders the page immediately)
         try {
             const response = await fetch('/api/admin/analytics');
             if (!response.ok) throw new Error('Failed to fetch analytics');
@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Phase 2: Chart data — loads separately, does NOT block Phase 1
+        // Phase 2: Chart data â€” loads separately, does NOT block Phase 1
         loadChartData();
     }
 
@@ -142,15 +142,25 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'fa-file';
     }
 
+    function getSelectedDocIds() {
+        try {
+            return JSON.parse(localStorage.getItem('selected_doc_ids')) || [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function saveSelectedDocIds() {
+        const checkboxes = document.querySelectorAll('#global-doc-selection input[type="checkbox"]');
+        const selectedIds = Array.from(checkboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.value);
+        localStorage.setItem('selected_doc_ids', JSON.stringify(selectedIds));
+    }
+
     function populateBrochureSelectors(documents) {
         const globalDocSelection = document.getElementById('global-doc-selection');
-        const getSelectedValues = (containerEl) => {
-            if (!containerEl) return [];
-            const checkboxes = containerEl.querySelectorAll('input[type="checkbox"]:checked');
-            return checkboxes ? Array.from(checkboxes).map(cb => cb.value) : [];
-        };
-        
-        const selectedVals = getSelectedValues(globalDocSelection);
+        const selectedVals = getSelectedDocIds();
         globalDocSelection.innerHTML = '';
         
         if (documents.length === 0) {
@@ -176,6 +186,11 @@ document.addEventListener('DOMContentLoaded', () => {
             globalDocSelection.appendChild(row);
         });
 
+        // Save selected states on change
+        globalDocSelection.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', saveSelectedDocIds);
+        });
+
         // Wire up delete buttons
         globalDocSelection.querySelectorAll('.doc-delete-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
@@ -197,6 +212,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         row.style.transform = 'translateX(8px)';
                         setTimeout(() => {
                             row.remove();
+                            // Update selection list
+                            saveSelectedDocIds();
                             // Show empty state if no rows remain
                             if (globalDocSelection.querySelectorAll('.doc-checklist-row').length === 0) {
                                 globalDocSelection.innerHTML = '<div class="doc-empty-state"><i class="fa-solid fa-folder-open"></i><span>No attachments yet. Upload a file or link in Step 1.</span></div>';
@@ -218,7 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderBrochureList(documents) {
-        // brochure-list element was removed in the new layout — skip gracefully
+        // brochure-list element was removed in the new layout â€” skip gracefully
         if (!brochureList) return;
         
         if (documents.length === 0) {
@@ -244,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderGlobalCharts(pageStats, clickStats) {
         // Page Heatmap Chart
         const pageChartEl = document.getElementById('pageHeatmapChart');
-        if (!pageChartEl) return;  // chart canvas not visible yet — skip
+        if (!pageChartEl) return;  // chart canvas not visible yet â€” skip
         const pageCtx = pageChartEl.getContext('2d');
         const sortedPageStats = [...pageStats].sort((a, b) => a.page_number - b.page_number);
         
@@ -504,13 +521,13 @@ document.addEventListener('DOMContentLoaded', () => {
             modalEngagementScore.textContent = score;
             
             if (score >= 75) {
-                modalScoreEval.textContent = '🔥 Hot Outreach Prospect';
+                modalScoreEval.textContent = 'ðŸ”¥ Hot Outreach Prospect';
                 modalScoreEval.classList.add('hot');
             } else if (score >= 35) {
-                modalScoreEval.textContent = '⚡ Medium Interest';
+                modalScoreEval.textContent = 'âš¡ Medium Interest';
                 modalScoreEval.classList.add('medium');
             } else {
-                modalScoreEval.textContent = '❄️ Low Interaction';
+                modalScoreEval.textContent = 'â„ï¸ Low Interaction';
                 modalScoreEval.classList.add('cold');
             }
 
@@ -661,7 +678,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // ── File selection indicator ──
+    // â”€â”€ File selection indicator â”€â”€
     const pdfFileInput      = document.getElementById('pdf-file');
     const fileSelectedPill  = document.getElementById('file-selected-name');
     const fileSelectedLabel = document.getElementById('file-selected-label');
@@ -676,7 +693,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 fileSelectedLabel.textContent = file.name;
                 fileSelectedPill.classList.remove('hidden');
                 // Update drop zone to confirm selection
-                fileDropText.textContent = 'File selected — click to change';
+                fileDropText.textContent = 'File selected â€” click to change';
                 fileDropIcon.className = 'fa-solid fa-circle-check';
                 fileDropIcon.style.color = 'var(--success-color)';
             }
