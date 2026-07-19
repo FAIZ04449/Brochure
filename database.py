@@ -649,8 +649,17 @@ def get_session_timeline(session_id, db_path=DATABASE_FILE):
             desc = ""
             if row['event_type'] == 'time_spent':
                 desc = f"Interacted with '{row['filename']}' for {round(row['active_seconds'], 1)} seconds"
+            elif row['event_type'] == 'video_view':
+                desc = f"Watched video '{row['filename']}' for {round(row['active_seconds'], 1)} seconds"
+            elif row['event_type'] == 'link_view':
+                desc = f"Viewed external link '{row['filename']}' for {round(row['active_seconds'], 1)} seconds"
+            elif row['event_type'] == 'play':
+                desc = f"Started playing video '{row['filename']}'"
+            elif row['event_type'] == 'pause':
+                desc = f"Paused video '{row['filename']}'"
             else:
                 desc = f"Performed '{row['event_type']}' on '{row['filename']}'"
+
             timeline.append({
                 'type': 'component',
                 'timestamp': row['created_at'],
@@ -711,9 +720,10 @@ def get_recipient_session_details(link_id, db_path=DATABASE_FILE):
             FROM component_events ce
             JOIN sessions s ON ce.session_id = s.id
             JOIN documents d ON ce.document_id = d.id
-            WHERE s.link_id = ? AND ce.event_type = 'time_spent'
+            WHERE s.link_id = ? AND ce.event_type IN ('time_spent', 'video_view', 'link_view')
             GROUP BY d.filename
         ''', (link_id,))
+
         for row in cursor.fetchall():
             details['component_times'][row['filename']] = round(row['total_seconds'], 1)
 
