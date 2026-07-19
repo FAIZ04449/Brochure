@@ -184,6 +184,9 @@ def send_slack_notification_async(session_id, host_url):
         f"Location: {location}\n"
     )
     
+    # Get the shared recipient link
+    shared_link = f"{host_url}v/{recipient_info['token']}" if recipient_info.get('token') else ""
+
     payload = {
         "text": message_content,
         "blocks": [
@@ -202,7 +205,22 @@ def send_slack_notification_async(session_id, host_url):
                     )
                 }
             }
-        ]
+        ],
+        # Flat root-level parameters for Slack Workflow Builder mapping variables
+        "name": name,
+        "recipient_name": name,
+        "email": email,
+        "recipient_email": email,
+        "company": company,
+        "recipient_company": company,
+        "location": location,
+        "recipient_location": location,
+        "link": shared_link,
+        "shared_link": shared_link,
+        "url": shared_link,
+        "filename": filename,
+        "bundle": filename,
+        "overview": activity_summary
     }
     threading.Thread(target=send_slack_notification_worker, args=(webhook_url, payload), daemon=True).start()
 

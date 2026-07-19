@@ -791,7 +791,7 @@ def get_recipient_by_session_id(session_id, db_path=DATABASE_FILE):
             SELECT 
                 r.name as recipient_name, r.email as recipient_email, r.company as recipient_company,
                 (SELECT GROUP_CONCAT(d2.filename, ', ') FROM link_documents ld2 JOIN documents d2 ON ld2.document_id = d2.id WHERE ld2.link_id = l.id) as filename,
-                l.id as link_id, s.geo_country, s.geo_city
+                l.id as link_id, s.geo_country, s.geo_city, l.token
             FROM sessions s
             JOIN links l ON s.link_id = l.id
             JOIN recipients r ON l.recipient_id = r.id
