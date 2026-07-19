@@ -7,3 +7,11 @@ __pycache__/
 .env.local
 venv/
 .venv/
+
+# User Data & Storage (prevents large files from being committed)
+storage/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.log

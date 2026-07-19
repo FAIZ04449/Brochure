@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Brochure Document Viewer</title>
+    <title>Tracking Hub</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,61 +16,132 @@
 </head>
 <body class="viewer-body">
 
-    <!-- Top Toolbar -->
-    <header class="viewer-toolbar">
-        <div class="toolbar-left">
-            <span class="doc-title" id="doc-title">Loading brochure...</span>
-        </div>
-        
-        <div class="toolbar-center">
-            <button class="nav-btn" id="prev-btn" title="Previous Page">
+    <div class="hub-layout">
+
+        <!-- ── Glassmorphism Taskbar (replaces left sidebar) ── -->
+        <nav class="hub-sidebar" id="hub-taskbar" aria-label="Document navigation">
+            <!-- Brand label -->
+            <div class="hub-sidebar-header">
+                <h2>Shared&nbsp;with&nbsp;you</h2>
+            </div>
+
+            <!-- Left scroll arrow (shown when items overflow) -->
+            <button class="taskbar-scroll-btn hidden" id="taskbar-scroll-left" aria-label="Scroll left">
                 <i class="fa-solid fa-chevron-left"></i>
             </button>
-            <div class="page-indicator">
-                <input type="number" id="page-num-input" class="page-num-input" value="1" min="1">
-                <span class="page-total" id="page-count">/ --</span>
-            </div>
-            <button class="nav-btn" id="next-btn" title="Next Page">
+
+            <!-- Document chips -->
+            <ul class="hub-nav-list" id="hub-nav-list">
+                <!-- Dynamically populated via JS -->
+            </ul>
+
+            <!-- Right scroll arrow -->
+            <button class="taskbar-scroll-btn hidden" id="taskbar-scroll-right" aria-label="Scroll right">
                 <i class="fa-solid fa-chevron-right"></i>
             </button>
-        </div>
-        
-        <div class="toolbar-right">
-            <button class="zoom-btn" id="zoom-out" title="Zoom Out">
-                <i class="fa-solid fa-minus"></i>
-            </button>
-            <span class="zoom-percent" id="zoom-value">100%</span>
-            <button class="zoom-btn" id="zoom-in" title="Zoom In">
-                <i class="fa-solid fa-plus"></i>
-            </button>
-            <button class="zoom-btn" id="zoom-fit" title="Fit to Width">
-                <i class="fa-solid fa-expand"></i>
-            </button>
-        </div>
-    </header>
+        </nav>
 
-    <!-- Canvas Viewer Workspace -->
-    <main class="viewer-container" id="viewer-container">
-        <div id="loading-spinner" class="loading-spinner">
-            <div class="spinner"></div>
-            <p>Rendering document pages...</p>
-        </div>
-        
-        <!-- Central Page Container -->
-        <div id="pdf-page-container" class="pdf-page-container hidden">
-            <canvas id="pdf-canvas"></canvas>
-            <div id="link-overlay-layer" class="link-overlay-layer"></div>
-        </div>
-    </main>
+        <!-- Main Workspace -->
+        <main class="hub-main">
+            <!-- PDF / content toolbar -->
+            <header class="viewer-toolbar" id="main-toolbar">
+                <div class="toolbar-left">
+                    <span class="doc-title" id="doc-title">Loading...</span>
+                </div>
+                
+                <div class="toolbar-center" id="pdf-controls" style="display: none;">
+                    <button class="nav-btn" id="prev-btn" title="Previous Page">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <div class="page-indicator">
+                        <input type="number" id="page-num-input" class="page-num-input" value="1" min="1">
+                        <span class="page-total" id="page-count">/ --</span>
+                    </div>
+                    <button class="nav-btn" id="next-btn" title="Next Page">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
+                
+                <div class="toolbar-right" id="pdf-zoom-controls" style="display: none;">
+                    <button class="zoom-btn" id="zoom-out" title="Zoom Out">
+                        <i class="fa-solid fa-minus"></i>
+                    </button>
+                    <span class="zoom-percent" id="zoom-value">100%</span>
+                    <button class="zoom-btn" id="zoom-in" title="Zoom In">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                    <button class="zoom-btn" id="zoom-fit" title="Fit to Width">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
+                </div>
+            </header>
 
-    <!-- Viewer Footer -->
-    <footer class="viewer-footer">
-        <p class="privacy-note">
-            &copy; Pibit.ai
-        </p>
-    </footer>
+            <!-- Component Viewer Area -->
+            <div class="viewer-container" id="viewer-container">
+                <div id="loading-spinner" class="loading-spinner">
+                    <div class="spinner"></div>
+                    <p id="loading-text">Loading bundle...</p>
+                </div>
+                
+                <!-- 1. PDF Container -->
+                <div id="pdf-page-container" class="pdf-page-container hidden">
+                    <canvas id="pdf-canvas"></canvas>
+                    <div id="link-overlay-layer" class="link-overlay-layer"></div>
+                </div>
+
+                <!-- 2. Video Container -->
+                <div id="video-container" class="video-container hidden">
+                    <!-- dynamically injected video tag -->
+                </div>
+
+                <!-- 3. Iframe Container (for external links) -->
+                <div id="iframe-container" class="iframe-container hidden">
+                    <!-- dynamically injected iframe tag -->
+                </div>
+            </div>
+
+            <!-- Viewer Footer -->
+            <footer class="viewer-footer">
+                <p class="privacy-note">
+                    &copy; Pibit.ai Tracking Hub
+                </p>
+            </footer>
+        </main>
+    </div>
 
     <!-- Viewer & Tracking Logic -->
     <script src="/static/js/viewer.js"></script>
+
+    <!-- Taskbar scroll arrows logic -->
+    <script>
+        (function () {
+            const list  = document.getElementById('hub-nav-list');
+            const btnL  = document.getElementById('taskbar-scroll-left');
+            const btnR  = document.getElementById('taskbar-scroll-right');
+            const STEP  = 200;
+
+            function updateArrows() {
+                if (!list) return;
+                const canScrollLeft  = list.scrollLeft > 4;
+                const canScrollRight = list.scrollLeft < (list.scrollWidth - list.clientWidth - 4);
+                btnL.classList.toggle('hidden', !canScrollLeft);
+                btnR.classList.toggle('hidden', !canScrollRight);
+            }
+
+            if (btnL) btnL.addEventListener('click', () => {
+                list.scrollBy({ left: -STEP, behavior: 'smooth' });
+            });
+            if (btnR) btnR.addEventListener('click', () => {
+                list.scrollBy({ left: STEP, behavior: 'smooth' });
+            });
+            if (list) {
+                list.addEventListener('scroll', updateArrows);
+                // Re-check when items are populated
+                const obs = new MutationObserver(updateArrows);
+                obs.observe(list, { childList: true });
+                updateArrows();
+            }
+        })();
+    </script>
 </body>
 </html>

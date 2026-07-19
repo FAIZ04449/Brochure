@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import re
+import json
 from datetime import datetime
 
 DATABASE_FILE = os.environ.get("DATABASE_PATH", "analytics.db")
@@ -9,7 +10,6 @@ def get_connection(db_path=DATABASE_FILE):
     """Returns a connection to the SQLite database with row factory enabled."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    # Enable foreign keys
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
@@ -20,52 +20,39 @@ def get_pdf_page_count(file_path):
             return 4
         with open(file_path, 'rb') as f:
             content = f.read()
-        # 1. Search for /Count
         matches = re.findall(br'/Count\s*(\d+)', content)
         if matches:
             return max(int(m) for m in matches)
-        # 2. Search for /Type /Page
         page_matches = re.findall(br'/Type\s*/Page\b', content)
         if page_matches:
             return len(page_matches)
     except Exception as e:
         print(f"Error reading PDF page count for {file_path}: {e}")
-    return 4  # Default fallback
+    return 4
 
 def init_db(db_path=DATABASE_FILE):
     """Initializes the database schema if it doesn't already exist."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
 
-    # 1. Documents table
+    # 1. Documents table (Added doc_type and metadata)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             filename TEXT NOT NULL,
             storage_path TEXT NOT NULL,
             total_pages INTEGER,
+            doc_type TEXT DEFAULT 'pdf',
+            metadata TEXT,
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-
-    # Alter table if existing database does not have total_pages
     try:
-        cursor.execute("ALTER TABLE documents ADD COLUMN total_pages INTEGER;")
+        cursor.execute("ALTER TABLE documents ADD COLUMN doc_type TEXT DEFAULT 'pdf';")
+        cursor.execute("ALTER TABLE documents ADD COLUMN metadata TEXT;")
     except sqlite3.OperationalError:
         pass
-
-    # Migrate any existing NULL total_pages
-    try:
-        cursor.execute("SELECT id, storage_path FROM documents WHERE total_pages IS NULL")
-        rows = cursor.fetchall()
-        for row in rows:
-            pages = get_pdf_page_count(row['storage_path'])
-            cursor.execute("UPDATE documents SET total_pages = ? WHERE id = ?", (pages, row['id']))
-        if rows:
-            conn.commit()
-    except Exception as e:
-        print(f"Migration error for total_pages: {e}")
-
+    
     # 2. Recipients table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS recipients (
@@ -78,19 +65,37 @@ def init_db(db_path=DATABASE_FILE):
     ''')
 
     # 3. Links table
+    # We keep document_id for backwards compatibility, but it's largely superseded by link_documents
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS links (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             token TEXT UNIQUE NOT NULL,
-            document_id INTEGER NOT NULL,
+            document_id INTEGER,
             recipient_id INTEGER NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             expires_at TIMESTAMP,
             revoked_at TIMESTAMP,
-            FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE,
+            FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE SET NULL,
             FOREIGN KEY (recipient_id) REFERENCES recipients (id) ON DELETE CASCADE
         )
     ''')
+
+    # 3.5. Link Documents (Many-to-many)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS link_documents (
+            link_id INTEGER NOT NULL,
+            document_id INTEGER NOT NULL,
+            FOREIGN KEY (link_id) REFERENCES links (id) ON DELETE CASCADE,
+            FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE,
+            PRIMARY KEY (link_id, document_id)
+        )
+    ''')
+
+    # Migrate links to link_documents
+    try:
+        cursor.execute("INSERT OR IGNORE INTO link_documents (link_id, document_id) SELECT id, document_id FROM links WHERE document_id IS NOT NULL")
+    except Exception as e:
+        print(f"Migration error for link_documents: {e}")
 
     # 4. Sessions table
     cursor.execute('''
@@ -109,45 +114,120 @@ def init_db(db_path=DATABASE_FILE):
     ''')
 
     # 5. Page Events table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS page_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            page_number INTEGER NOT NULL,
-            entered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            left_at TIMESTAMP,
-            active_seconds REAL DEFAULT 0,
-            FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
-            UNIQUE(session_id, page_number)
-        )
-    ''')
+    # Needs document_id and a new unique constraint. We'll recreate if it doesn't have document_id
+    cursor.execute("PRAGMA table_info(page_events)")
+    columns = [row['name'] for row in cursor.fetchall()]
+    
+    if columns and 'document_id' not in columns:
+        print("Migrating page_events table to include document_id...")
+        cursor.execute('''
+            CREATE TABLE page_events_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                document_id INTEGER NOT NULL,
+                page_number INTEGER NOT NULL,
+                entered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                left_at TIMESTAMP,
+                active_seconds REAL DEFAULT 0,
+                FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
+                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE,
+                UNIQUE(session_id, document_id, page_number)
+            )
+        ''')
+        cursor.execute('''
+            INSERT INTO page_events_new (id, session_id, document_id, page_number, entered_at, left_at, active_seconds)
+            SELECT pe.id, pe.session_id, COALESCE(l.document_id, 1), pe.page_number, pe.entered_at, pe.left_at, pe.active_seconds
+            FROM page_events pe
+            JOIN sessions s ON pe.session_id = s.id
+            JOIN links l ON s.link_id = l.id
+        ''')
+        cursor.execute("DROP TABLE page_events")
+        cursor.execute("ALTER TABLE page_events_new RENAME TO page_events")
+    else:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS page_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                document_id INTEGER NOT NULL,
+                page_number INTEGER NOT NULL,
+                entered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                left_at TIMESTAMP,
+                active_seconds REAL DEFAULT 0,
+                FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
+                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE,
+                UNIQUE(session_id, document_id, page_number)
+            )
+        ''')
 
     # 6. Click Events table
+    # Also add document_id
+    cursor.execute("PRAGMA table_info(click_events)")
+    click_columns = [row['name'] for row in cursor.fetchall()]
+    if click_columns and 'document_id' not in click_columns:
+        print("Migrating click_events table to include document_id...")
+        cursor.execute('''
+            CREATE TABLE click_events_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                document_id INTEGER NOT NULL,
+                page_number INTEGER,
+                target_url TEXT,
+                clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
+                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
+            )
+        ''')
+        cursor.execute('''
+            INSERT INTO click_events_new (id, session_id, document_id, page_number, target_url, clicked_at)
+            SELECT ce.id, ce.session_id, COALESCE(l.document_id, 1), ce.page_number, ce.target_url, ce.clicked_at
+            FROM click_events ce
+            JOIN sessions s ON ce.session_id = s.id
+            JOIN links l ON s.link_id = l.id
+        ''')
+        cursor.execute("DROP TABLE click_events")
+        cursor.execute("ALTER TABLE click_events_new RENAME TO click_events")
+    else:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS click_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                document_id INTEGER NOT NULL,
+                page_number INTEGER,
+                target_url TEXT,
+                clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
+                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
+            )
+        ''')
+
+    # 7. Component Events table (for Videos, Whiteboards, etc.)
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS click_events (
+        CREATE TABLE IF NOT EXISTS component_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT NOT NULL,
-            page_number INTEGER NOT NULL,
-            target_url TEXT,
-            clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE
+            document_id INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            active_seconds REAL DEFAULT 0,
+            event_data TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
+            FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
         )
     ''')
 
     conn.commit()
     conn.close()
 
-# --- Helper functions for documents ---
-
-def add_document(filename, storage_path, db_path=DATABASE_FILE):
-    total_pages = get_pdf_page_count(storage_path)
+# --- Helpers ---
+def add_document(filename, storage_path, doc_type='pdf', metadata=None, db_path=DATABASE_FILE):
+    total_pages = get_pdf_page_count(storage_path) if doc_type == 'pdf' else None
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
         cursor.execute('''
-            INSERT INTO documents (filename, storage_path, total_pages)
-            VALUES (?, ?, ?)
-        ''', (filename, storage_path, total_pages))
+            INSERT INTO documents (filename, storage_path, total_pages, doc_type, metadata)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (filename, storage_path, total_pages, doc_type, metadata))
         conn.commit()
         return cursor.lastrowid
     except sqlite3.Error as e:
@@ -161,7 +241,8 @@ def get_document(doc_id, db_path=DATABASE_FILE):
     cursor = conn.cursor()
     try:
         cursor.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
-        return cursor.fetchone()
+        row = cursor.fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
 
@@ -174,25 +255,45 @@ def list_documents(db_path=DATABASE_FILE):
     finally:
         conn.close()
 
-# --- Helper functions for recipients ---
+def delete_document(doc_id, db_path=DATABASE_FILE):
+    """Deletes a document record and its physical file from storage."""
+    import os
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT storage_path, doc_type FROM documents WHERE id = ?", (doc_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False, "Document not found"
+
+        # Delete the physical file (skip for external links which have no real file)
+        storage_path = row["storage_path"]
+        if row["doc_type"] != "link" and storage_path and os.path.exists(storage_path):
+            try:
+                os.remove(storage_path)
+            except OSError as e:
+                print(f"Warning: could not delete file {storage_path}: {e}")
+
+        # Remove from DB (cascade will clean up link_documents references if FK is ON)
+        cursor.execute("DELETE FROM link_documents WHERE document_id = ?", (doc_id,))
+        cursor.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        conn.commit()
+        return True, "Deleted"
+    except sqlite3.Error as e:
+        print(f"Error deleting document {doc_id}: {e}")
+        return False, str(e)
+    finally:
+        conn.close()
 
 def add_recipient(name, email, company, db_path=DATABASE_FILE):
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
-        # Check if recipient already exists with same email, name, company
-        cursor.execute('''
-            SELECT id FROM recipients 
-            WHERE email = ? AND name = ? AND company = ?
-        ''', (email, name, company))
+        cursor.execute('SELECT id FROM recipients WHERE email = ? AND name = ? AND company = ?', (email, name, company))
         existing = cursor.fetchone()
-        if existing:
-            return existing['id']
+        if existing: return existing['id']
             
-        cursor.execute('''
-            INSERT INTO recipients (name, email, company)
-            VALUES (?, ?, ?)
-        ''', (name, email, company))
+        cursor.execute('INSERT INTO recipients (name, email, company) VALUES (?, ?, ?)', (name, email, company))
         conn.commit()
         return cursor.lastrowid
     except sqlite3.Error as e:
@@ -201,18 +302,27 @@ def add_recipient(name, email, company, db_path=DATABASE_FILE):
     finally:
         conn.close()
 
-# --- Helper functions for links ---
-
-def create_link(token, document_id, recipient_id, expires_at=None, db_path=DATABASE_FILE):
+def create_link(token, document_ids, recipient_id, expires_at=None, db_path=DATABASE_FILE):
+    if not document_ids:
+        return None
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
+        first_doc = document_ids[0]
         cursor.execute('''
             INSERT INTO links (token, document_id, recipient_id, expires_at)
             VALUES (?, ?, ?, ?)
-        ''', (token, document_id, recipient_id, expires_at))
+        ''', (token, first_doc, recipient_id, expires_at))
+        link_id = cursor.lastrowid
+        
+        for doc_id in document_ids:
+            cursor.execute('''
+                INSERT INTO link_documents (link_id, document_id)
+                VALUES (?, ?)
+            ''', (link_id, doc_id))
+        
         conn.commit()
-        return cursor.lastrowid
+        return link_id
     except sqlite3.Error as e:
         print(f"Error creating link: {e}")
         return None
@@ -220,59 +330,62 @@ def create_link(token, document_id, recipient_id, expires_at=None, db_path=DATAB
         conn.close()
 
 def get_link_by_token(token, db_path=DATABASE_FILE):
-    """Retrieves link, document and recipient details by token."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
         cursor.execute('''
             SELECT 
                 l.id as link_id, l.token, l.created_at as link_created_at, l.expires_at, l.revoked_at,
-                d.id as document_id, d.filename, d.storage_path,
                 r.id as recipient_id, r.name as recipient_name, r.email as recipient_email, r.company as recipient_company
             FROM links l
-            JOIN documents d ON l.document_id = d.id
             JOIN recipients r ON l.recipient_id = r.id
             WHERE l.token = ?
         ''', (token,))
-        row = cursor.fetchone()
-        return dict(row) if row else None
+        link_row = cursor.fetchone()
+        if not link_row:
+            return None
+        
+        link_data = dict(link_row)
+        
+        cursor.execute('''
+            SELECT d.* 
+            FROM link_documents ld
+            JOIN documents d ON ld.document_id = d.id
+            WHERE ld.link_id = ?
+        ''', (link_data['link_id'],))
+        
+        link_data['documents'] = [dict(row) for row in cursor.fetchall()]
+        
+        if link_data['documents']:
+            first_doc = link_data['documents'][0]
+            link_data['document_id'] = first_doc['id']
+            link_data['filename'] = first_doc['filename']
+            link_data['storage_path'] = first_doc['storage_path']
+            
+        return link_data
     finally:
         conn.close()
 
 def is_link_invalid(link):
-    """Checks if a link dictionary is expired or revoked."""
-    if not link:
-        return True
-    if link.get('revoked_at'):
-        return True
+    if not link: return True
+    if link.get('revoked_at'): return True
     if link.get('expires_at'):
         try:
-            # Parse ISO-8601 expiry date
             expiry = datetime.fromisoformat(link['expires_at'].replace('Z', '+00:00'))
-            # Convert current time to timezone-aware UTC
             now = datetime.now(expiry.tzinfo)
-            if now > expiry:
-                return True
-        except Exception as e:
-            print(f"Error parsing expiry datetime: {e}")
-            # Fallback text comparison if formatting is standard SQL datetime
+            if now > expiry: return True
+        except:
             try:
                 expiry = datetime.strptime(link['expires_at'], "%Y-%m-%d %H:%M:%S")
-                if datetime.utcnow() > expiry:
-                    return True
-            except Exception:
-                pass
+                if datetime.utcnow() > expiry: return True
+            except: pass
     return False
 
 def revoke_link(token, db_path=DATABASE_FILE):
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
-        cursor.execute('''
-            UPDATE links
-            SET revoked_at = CURRENT_TIMESTAMP
-            WHERE token = ?
-        ''', (token,))
+        cursor.execute("UPDATE links SET revoked_at = CURRENT_TIMESTAMP WHERE token = ?", (token,))
         conn.commit()
         return cursor.rowcount > 0
     except sqlite3.Error as e:
@@ -280,8 +393,6 @@ def revoke_link(token, db_path=DATABASE_FILE):
         return False
     finally:
         conn.close()
-
-# --- Helper functions for sessions and event logs ---
 
 def create_session(session_id, link_id, ip_address, user_agent, country, city, db_path=DATABASE_FILE):
     conn = get_connection(db_path)
@@ -300,15 +411,10 @@ def create_session(session_id, link_id, ip_address, user_agent, country, city, d
         conn.close()
 
 def update_session_heartbeat(session_id, db_path=DATABASE_FILE):
-    """Updates session ended_at and total active time."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
-        cursor.execute('''
-            UPDATE sessions
-            SET ended_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        ''', (session_id,))
+        cursor.execute("UPDATE sessions SET ended_at = CURRENT_TIMESTAMP WHERE id = ?", (session_id,))
         conn.commit()
         sync_session_active_time(session_id, db_path)
         return True
@@ -318,16 +424,14 @@ def update_session_heartbeat(session_id, db_path=DATABASE_FILE):
     finally:
         conn.close()
 
-def upsert_page_event(session_id, page_number, active_seconds, db_path=DATABASE_FILE):
-    """Upserts page active duration, adding it to existing active seconds if row exists."""
+def upsert_page_event(session_id, document_id, page_number, active_seconds, db_path=DATABASE_FILE):
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
-        # Check if page event already exists for this session
         cursor.execute('''
             SELECT id, active_seconds FROM page_events 
-            WHERE session_id = ? AND page_number = ?
-        ''', (session_id, page_number))
+            WHERE session_id = ? AND document_id = ? AND page_number = ?
+        ''', (session_id, document_id, page_number))
         row = cursor.fetchone()
         
         if row:
@@ -338,9 +442,9 @@ def upsert_page_event(session_id, page_number, active_seconds, db_path=DATABASE_
             ''', (active_seconds, row['id']))
         else:
             cursor.execute('''
-                INSERT INTO page_events (session_id, page_number, active_seconds, entered_at, left_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ''', (session_id, page_number, active_seconds))
+                INSERT INTO page_events (session_id, document_id, page_number, active_seconds, entered_at, left_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ''', (session_id, document_id, page_number, active_seconds))
             
         conn.commit()
         sync_session_active_time(session_id, db_path)
@@ -351,14 +455,50 @@ def upsert_page_event(session_id, page_number, active_seconds, db_path=DATABASE_
     finally:
         conn.close()
 
-def log_click_event(session_id, page_number, target_url, db_path=DATABASE_FILE):
+def log_component_event(session_id, document_id, event_type, active_seconds, event_data=None, db_path=DATABASE_FILE):
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    try:
+        if event_type == 'time_spent':
+            cursor.execute('''
+                SELECT id FROM component_events 
+                WHERE session_id = ? AND document_id = ? AND event_type = ?
+            ''', (session_id, document_id, event_type))
+            row = cursor.fetchone()
+            if row:
+                cursor.execute('''
+                    UPDATE component_events
+                    SET active_seconds = active_seconds + ?
+                    WHERE id = ?
+                ''', (active_seconds, row['id']))
+            else:
+                cursor.execute('''
+                    INSERT INTO component_events (session_id, document_id, event_type, active_seconds, event_data)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (session_id, document_id, event_type, active_seconds, event_data))
+        else:
+            cursor.execute('''
+                INSERT INTO component_events (session_id, document_id, event_type, active_seconds, event_data)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (session_id, document_id, event_type, active_seconds, event_data))
+            
+        conn.commit()
+        sync_session_active_time(session_id, db_path)
+        return True
+    except sqlite3.Error as e:
+        print(f"Error logging component event: {e}")
+        return False
+    finally:
+        conn.close()
+
+def log_click_event(session_id, document_id, page_number, target_url, db_path=DATABASE_FILE):
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
         cursor.execute('''
-            INSERT INTO click_events (session_id, page_number, target_url)
-            VALUES (?, ?, ?)
-        ''', (session_id, page_number, target_url))
+            INSERT INTO click_events (session_id, document_id, page_number, target_url)
+            VALUES (?, ?, ?, ?)
+        ''', (session_id, document_id, page_number, target_url))
         conn.commit()
         return True
     except sqlite3.Error as e:
@@ -368,7 +508,6 @@ def log_click_event(session_id, page_number, target_url, db_path=DATABASE_FILE):
         conn.close()
 
 def sync_session_active_time(session_id, db_path=DATABASE_FILE):
-    """Recalculates total active seconds for a session from the page_events table."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
@@ -376,9 +515,11 @@ def sync_session_active_time(session_id, db_path=DATABASE_FILE):
             UPDATE sessions
             SET total_active_seconds = COALESCE((
                 SELECT SUM(active_seconds) FROM page_events WHERE session_id = ?
+            ), 0) + COALESCE((
+                SELECT SUM(active_seconds) FROM component_events WHERE session_id = ? AND event_type = 'time_spent'
             ), 0)
             WHERE id = ?
-        ''', (session_id, session_id))
+        ''', (session_id, session_id, session_id))
         conn.commit()
     except sqlite3.Error as e:
         print(f"Error syncing active time: {e}")
@@ -386,111 +527,63 @@ def sync_session_active_time(session_id, db_path=DATABASE_FILE):
         conn.close()
 
 def get_session_count_for_link(link_id, db_path=DATABASE_FILE):
-    """Counts the number of sessions created for a specific link ID."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
         cursor.execute("SELECT COUNT(*) as cnt FROM sessions WHERE link_id = ?", (link_id,))
         return cursor.fetchone()['cnt']
-    except sqlite3.Error as e:
-        print(f"Error getting session count: {e}")
-        return 0
-    finally:
-        conn.close()
-
-# --- Dashboard & Analytics queries ---
+    except: return 0
+    finally: conn.close()
 
 def get_dashboard_stats(db_path=DATABASE_FILE):
-    """Retrieves overall performance metrics for the admin dashboard."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
     stats = {
-        'total_links': 0,
-        'total_opens': 0,
-        'avg_active_seconds': 0,
-        'avg_completion_pct': 0,
-        'click_through_rate': 0
+        'total_links': 0, 'total_opens': 0, 'avg_active_seconds': 0,
+        'click_through_rate': 0, 'avg_pages_read': 0
     }
     try:
-        # 1. Total links generated
         cursor.execute("SELECT COUNT(*) as cnt FROM links")
         stats['total_links'] = cursor.fetchone()['cnt']
-
-        # 2. Total sessions (opens)
         cursor.execute("SELECT COUNT(*) as cnt FROM sessions")
         stats['total_opens'] = cursor.fetchone()['cnt']
-
-        # 3. Average duration of views (sum of sessions / count of sessions)
         cursor.execute("SELECT AVG(total_active_seconds) as avg_sec FROM sessions")
         stats['avg_active_seconds'] = round(cursor.fetchone()['avg_sec'] or 0, 1)
-
-        # 4. Average completion percentage
-        # First check how many pages each link's document has (to get this accurate, we need a simple metric. Let's compute average unique pages viewed vs total pages. Or let's assume a brochure has pages. Wait! Since different documents can have different total pages, we can check how many pages were viewed versus total pages. If we don't store total pages in documents, we can estimate it, or retrieve it from the files. Wait! We can assume percentage pages viewed = count(distinct page_events.page_number) / 4.0 * 100 since the sample brochure has 4 pages, or look up pages from database. Let's write a query that joins with documents and calculates it if we can, or returns the count of distinct pages viewed per session.)
-        # Let's count unique page views per session, and divide by document pages if we know them, or return average number of pages read. Let's make a query:
+        
         cursor.execute('''
-            SELECT 
-                AVG(pages_viewed) as avg_pages
+            SELECT AVG(pages_viewed) as avg_pages
             FROM (
                 SELECT session_id, COUNT(DISTINCT page_number) as pages_viewed
-                FROM page_events
-                GROUP BY session_id
+                FROM page_events GROUP BY session_id
             )
         ''')
         avg_pages = cursor.fetchone()['avg_pages'] or 0
-        # Let's assume a default of 4 pages for our brochure, but return average pages read directly, or express it as a percentage. Let's store total page count or compute it from the timeline. Actually, let's keep it as avg pages read or assume 4 pages as a base if not specified. Let's return average unique pages read per session.
         stats['avg_pages_read'] = round(avg_pages, 1)
 
-        # 5. CTR: sessions that clicked a link / total sessions
-        cursor.execute('''
-            SELECT COUNT(DISTINCT session_id) as clickers 
-            FROM click_events
-        ''')
+        cursor.execute("SELECT COUNT(DISTINCT session_id) as clickers FROM click_events")
         clickers = cursor.fetchone()['clickers']
         stats['click_through_rate'] = round((clickers / stats['total_opens'] * 100) if stats['total_opens'] > 0 else 0, 1)
-        
-    except sqlite3.Error as e:
-        print(f"Error getting dashboard stats: {e}")
-    finally:
-        conn.close()
+    except Exception as e: print(f"Stats Error: {e}")
+    finally: conn.close()
     return stats
 
 def get_all_recipient_logs(db_path=DATABASE_FILE):
-    """Returns a list of links and their corresponding recipient activities."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
     logs = []
     try:
-        # Query that joins links, documents, recipients, and aggregates session data
         cursor.execute('''
             SELECT 
-                l.id as link_id,
-                l.token,
-                l.created_at as sent_date,
-                l.expires_at,
-                l.revoked_at,
-                r.name as recipient_name,
-                r.email as recipient_email,
-                r.company as recipient_company,
-                d.filename as document_name,
-                d.total_pages as total_pages,
+                l.id as link_id, l.token, l.created_at as sent_date, l.expires_at, l.revoked_at,
+                r.name as recipient_name, r.email as recipient_email, r.company as recipient_company,
+                (SELECT GROUP_CONCAT(d2.filename, ', ') FROM link_documents ld2 JOIN documents d2 ON ld2.document_id = d2.id WHERE ld2.link_id = l.id) as document_name,
                 COUNT(s.id) as open_count,
                 COALESCE(SUM(s.total_active_seconds), 0) as total_time_spent,
                 MAX(s.ended_at) as last_activity,
-                (
-                    SELECT COUNT(DISTINCT pe.page_number) 
-                    FROM page_events pe 
-                    JOIN sessions s2 ON pe.session_id = s2.id 
-                    WHERE s2.link_id = l.id
-                ) as unique_pages_viewed,
-                (
-                    SELECT MAX(pe.page_number) 
-                    FROM page_events pe 
-                    JOIN sessions s2 ON pe.session_id = s2.id 
-                    WHERE s2.link_id = l.id
-                ) as last_page_viewed
+                (SELECT COUNT(DISTINCT pe.page_number) FROM page_events pe JOIN sessions s2 ON pe.session_id = s2.id WHERE s2.link_id = l.id) as unique_pages_viewed,
+                (SELECT MAX(pe.page_number) FROM page_events pe JOIN sessions s2 ON pe.session_id = s2.id WHERE s2.link_id = l.id) as last_page_viewed
             FROM links l
             JOIN recipients r ON l.recipient_id = r.id
-            JOIN documents d ON l.document_id = d.id
             LEFT JOIN sessions s ON s.link_id = l.id
             GROUP BY l.id
             ORDER BY l.created_at DESC
@@ -504,142 +597,141 @@ def get_all_recipient_logs(db_path=DATABASE_FILE):
     return logs
 
 def get_session_timeline(session_id, db_path=DATABASE_FILE):
-    """
-    Constructs a detailed chronological timeline of activities for a single session.
-    """
     conn = get_connection(db_path)
     cursor = conn.cursor()
     timeline = []
     try:
-        # Get session info
         cursor.execute('''
             SELECT s.started_at, s.ip_address, s.user_agent, s.geo_country, s.geo_city,
-                   r.name as recipient_name, l.token, d.filename
+                   r.name as recipient_name, l.token
             FROM sessions s
             JOIN links l ON s.link_id = l.id
             JOIN recipients r ON l.recipient_id = r.id
-            JOIN documents d ON l.document_id = d.id
             WHERE s.id = ?
         ''', (session_id,))
         session = cursor.fetchone()
-        if not session:
-            return []
-
+        if not session: return []
+        
         base_time = datetime.fromisoformat(session['started_at'].replace('Z', '+00:00'))
-
-        # Add Start event
         location = f"{session['geo_city']}, {session['geo_country']}" if session['geo_city'] else "Unknown Location"
         timeline.append({
             'type': 'start',
             'timestamp': session['started_at'],
-            'description': f"Opened PDF brochure '{session['filename']}' from {location}",
+            'description': f"Opened Hub Link from {location}",
             'relative_sec': 0
         })
 
-        # Add page_events
         cursor.execute('''
-            SELECT page_number, entered_at, active_seconds
-            FROM page_events
-            WHERE session_id = ?
-            ORDER BY entered_at ASC
+            SELECT pe.page_number, pe.entered_at, pe.active_seconds, d.filename
+            FROM page_events pe
+            JOIN documents d ON pe.document_id = d.id
+            WHERE pe.session_id = ?
+            ORDER BY pe.entered_at ASC
         ''', (session_id,))
         for row in cursor.fetchall():
             ent_time = datetime.fromisoformat(row['entered_at'].replace('Z', '+00:00'))
-            rel_sec = int((ent_time - base_time).total_seconds())
             timeline.append({
                 'type': 'page',
                 'timestamp': row['entered_at'],
-                'description': f"Viewed Page {row['page_number']} for {round(row['active_seconds'], 1)} seconds",
-                'relative_sec': max(0, rel_sec)
+                'description': f"Viewed Page {row['page_number']} of '{row['filename']}' for {round(row['active_seconds'], 1)} seconds",
+                'relative_sec': max(0, int((ent_time - base_time).total_seconds()))
             })
 
-        # Add click_events
         cursor.execute('''
-            SELECT page_number, target_url, clicked_at
-            FROM click_events
-            WHERE session_id = ?
-            ORDER BY clicked_at ASC
+            SELECT ce.event_type, ce.active_seconds, ce.created_at, d.filename, d.doc_type
+            FROM component_events ce
+            JOIN documents d ON ce.document_id = d.id
+            WHERE ce.session_id = ?
+            ORDER BY ce.created_at ASC
+        ''', (session_id,))
+        for row in cursor.fetchall():
+            crt_time = datetime.fromisoformat(row['created_at'].replace('Z', '+00:00'))
+            desc = ""
+            if row['event_type'] == 'time_spent':
+                desc = f"Interacted with '{row['filename']}' for {round(row['active_seconds'], 1)} seconds"
+            else:
+                desc = f"Performed '{row['event_type']}' on '{row['filename']}'"
+            timeline.append({
+                'type': 'component',
+                'timestamp': row['created_at'],
+                'description': desc,
+                'relative_sec': max(0, int((crt_time - base_time).total_seconds()))
+            })
+
+        cursor.execute('''
+            SELECT ce.page_number, ce.target_url, ce.clicked_at, d.filename
+            FROM click_events ce
+            JOIN documents d ON ce.document_id = d.id
+            WHERE ce.session_id = ?
+            ORDER BY ce.clicked_at ASC
         ''', (session_id,))
         for row in cursor.fetchall():
             clk_time = datetime.fromisoformat(row['clicked_at'].replace('Z', '+00:00'))
-            rel_sec = int((clk_time - base_time).total_seconds())
             timeline.append({
                 'type': 'click',
                 'timestamp': row['clicked_at'],
-                'description': f"Clicked URL '{row['target_url']}' on Page {row['page_number']}",
-                'relative_sec': max(0, rel_sec)
+                'description': f"Clicked URL '{row['target_url']}' in '{row['filename']}'",
+                'relative_sec': max(0, int((clk_time - base_time).total_seconds()))
             })
 
-        # Sort timeline chronologically
         timeline.sort(key=lambda x: (x['relative_sec'], x['timestamp']))
-        
-    except sqlite3.Error as e:
-        print(f"Error getting session timeline: {e}")
-    finally:
-        conn.close()
+    except sqlite3.Error as e: print(f"Error getting session timeline: {e}")
+    finally: conn.close()
     return timeline
 
 def get_recipient_session_details(link_id, db_path=DATABASE_FILE):
-    """Retrieves list of sessions, page durations, and clicks for a specific link."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
     details = {
         'sessions': [],
         'page_durations': {},
         'clicks': [],
+        'component_times': {},
         'total_pages': 4
     }
     try:
-        # Get total pages of the document
-        cursor.execute('''
-            SELECT d.total_pages
-            FROM links l
-            JOIN documents d ON l.document_id = d.id
-            WHERE l.id = ?
-        ''', (link_id,))
-        doc_row = cursor.fetchone()
-        if doc_row and doc_row['total_pages']:
-            details['total_pages'] = doc_row['total_pages']
+        cursor.execute('SELECT * FROM sessions WHERE link_id = ? ORDER BY started_at DESC', (link_id,))
+        details['sessions'] = [dict(row) for row in cursor.fetchall()]
 
-        # Get sessions
         cursor.execute('''
-            SELECT * FROM sessions 
-            WHERE link_id = ? 
-            ORDER BY started_at DESC
-        ''', (link_id,))
-        sessions = [dict(row) for row in cursor.fetchall()]
-        details['sessions'] = sessions
-
-        # Get aggregate page durations across all sessions for this link
-        cursor.execute('''
-            SELECT pe.page_number, SUM(pe.active_seconds) as total_seconds
+            SELECT d.filename, pe.page_number, SUM(pe.active_seconds) as total_seconds
             FROM page_events pe
             JOIN sessions s ON pe.session_id = s.id
+            JOIN documents d ON pe.document_id = d.id
             WHERE s.link_id = ?
-            GROUP BY pe.page_number
-            ORDER BY pe.page_number ASC
+            GROUP BY d.filename, pe.page_number
+            ORDER BY d.filename, pe.page_number ASC
         ''', (link_id,))
         for row in cursor.fetchall():
-            details['page_durations'][row['page_number']] = round(row['total_seconds'], 1)
+            key = f"{row['filename']} - Page {row['page_number']}"
+            details['page_durations'][key] = round(row['total_seconds'], 1)
 
-        # Get all clicks for these sessions
         cursor.execute('''
-            SELECT ce.page_number, ce.target_url, ce.clicked_at, s.id as session_id
+            SELECT d.filename, SUM(ce.active_seconds) as total_seconds
+            FROM component_events ce
+            JOIN sessions s ON ce.session_id = s.id
+            JOIN documents d ON ce.document_id = d.id
+            WHERE s.link_id = ? AND ce.event_type = 'time_spent'
+            GROUP BY d.filename
+        ''', (link_id,))
+        for row in cursor.fetchall():
+            details['component_times'][row['filename']] = round(row['total_seconds'], 1)
+
+        cursor.execute('''
+            SELECT ce.page_number, ce.target_url, ce.clicked_at, s.id as session_id, d.filename
             FROM click_events ce
             JOIN sessions s ON ce.session_id = s.id
+            JOIN documents d ON ce.document_id = d.id
             WHERE s.link_id = ?
             ORDER BY ce.clicked_at DESC
         ''', (link_id,))
         details['clicks'] = [dict(row) for row in cursor.fetchall()]
 
-    except sqlite3.Error as e:
-        print(f"Error getting recipient session details: {e}")
-    finally:
-        conn.close()
+    except sqlite3.Error as e: print(f"Error details: {e}")
+    finally: conn.close()
     return details
 
 def get_page_stats_all(db_path=DATABASE_FILE):
-    """Gets total and average time spent on each page across all links."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
     stats = []
@@ -661,65 +753,41 @@ def get_page_stats_all(db_path=DATABASE_FILE):
                 'avg_duration': round(row['avg_duration'], 1),
                 'view_count': row['view_count']
             })
-    except sqlite3.Error as e:
-        print(f"Error getting aggregate page stats: {e}")
-    finally:
-        conn.close()
+    except: pass
+    finally: conn.close()
     return stats
 
 def get_click_stats_all(db_path=DATABASE_FILE):
-    """Gets counts of link clicks grouped by target URL."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
     stats = []
     try:
         cursor.execute('''
-            SELECT 
-                target_url, 
-                COUNT(*) as click_count,
-                COUNT(DISTINCT session_id) as unique_clicks
+            SELECT target_url, COUNT(*) as click_count, COUNT(DISTINCT session_id) as unique_clicks
             FROM click_events
             GROUP BY target_url
-            ORDER BY click_count DESC
-            LIMIT 10
+            ORDER BY click_count DESC LIMIT 10
         ''')
-        for row in cursor.fetchall():
-            stats.append({
-                'target_url': row['target_url'],
-                'click_count': row['click_count'],
-                'unique_clicks': row['unique_clicks']
-            })
-    except sqlite3.Error as e:
-        print(f"Error getting click stats: {e}")
-    finally:
-        conn.close()
+        for row in cursor.fetchall(): stats.append(dict(row))
+    except: pass
+    finally: conn.close()
     return stats
 
 def get_recipient_by_session_id(session_id, db_path=DATABASE_FILE):
-    """Retrieves recipient and document details by session ID (session -> link -> recipient/document)."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
     try:
         cursor.execute('''
             SELECT 
-                r.name as recipient_name, 
-                r.email as recipient_email, 
-                r.company as recipient_company,
-                d.filename,
-                l.id as link_id,
-                s.geo_country,
-                s.geo_city
+                r.name as recipient_name, r.email as recipient_email, r.company as recipient_company,
+                (SELECT GROUP_CONCAT(d2.filename, ', ') FROM link_documents ld2 JOIN documents d2 ON ld2.document_id = d2.id WHERE ld2.link_id = l.id) as filename,
+                l.id as link_id, s.geo_country, s.geo_city
             FROM sessions s
             JOIN links l ON s.link_id = l.id
             JOIN recipients r ON l.recipient_id = r.id
-            JOIN documents d ON l.document_id = d.id
             WHERE s.id = ?
         ''', (session_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
-    except sqlite3.Error as e:
-        print(f"Error getting recipient by session ID: {e}")
-        return None
-    finally:
-        conn.close()
-
+    except: return None
+    finally: conn.close()
