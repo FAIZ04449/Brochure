@@ -791,3 +791,87 @@ def get_recipient_by_session_id(session_id, db_path=DATABASE_FILE):
         return dict(row) if row else None
     except: return None
     finally: conn.close()
+
+def get_link_activity_summary(link_id, db_path=DATABASE_FILE):
+    """Compiles a short text summary of all activities recorded on this link."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    summary = []
+    session_count = 0
+    try:
+        # Get session count & total time
+        cursor.execute("SELECT COUNT(*) as session_count, SUM(total_active_seconds) as total_time FROM sessions WHERE link_id = ?", (link_id,))
+        row = cursor.fetchone()
+        session_count = row['session_count'] or 0
+        total_time = int(row['total_time'] or 0)
+        
+        time_str = ""
+        if total_time >= 60:
+            time_str = f"{total_time // 60}m {total_time % 60}s"
+        else:
+            time_str = f"{total_time}s"
+            
+        summary.append(f"• *Total visits:* {session_count} times")
+        summary.append(f"• *Total time spent:* {time_str}")
+
+        # Get pages read
+        cursor.execute('''
+            SELECT d.filename, COUNT(DISTINCT pe.page_number) as pages, SUM(pe.active_seconds) as dur
+            FROM page_events pe
+            JOIN sessions s ON pe.session_id = s.id
+            JOIN documents d ON pe.document_id = d.id
+            WHERE s.link_id = ?
+            GROUP BY d.filename
+        ''', (link_id,))
+        pages_rows = cursor.fetchall()
+        if pages_rows:
+            summary.append("\n*Document Pages Read:*")
+            for r in pages_rows:
+                dur_str = f"{int(r['dur'])}s" if r['dur'] < 60 else f"{int(r['dur'] // 60)}m {int(r['dur'] % 60)}s"
+                summary.append(f"  - `{r['filename']}`: Read {r['pages']} page(s) ({dur_str})")
+
+        # Get video / component interactions
+        cursor.execute('''
+            SELECT d.filename, d.doc_type, ce.event_type, COUNT(*) as cnt, SUM(ce.active_seconds) as dur
+            FROM component_events ce
+            JOIN sessions s ON ce.session_id = s.id
+            JOIN documents d ON ce.document_id = d.id
+            WHERE s.link_id = ?
+            GROUP BY d.filename, ce.event_type
+        ''', (link_id,))
+        comp_rows = cursor.fetchall()
+        if comp_rows:
+            summary.append("\n*Media & Link Clicks:*")
+            for r in comp_rows:
+                if r['event_type'] == 'play':
+                    summary.append(f"  - Played video `{r['filename']}` ({r['cnt']} time(s))")
+                elif r['event_type'] == 'pause':
+                    pass
+                else:
+                    dur_str = f" for {int(r['dur'])}s" if r['dur'] > 0 else ""
+                    summary.append(f"  - Interacted with `{r['filename']}` ({r['event_type']}){dur_str}")
+
+        # Get link clicks
+        cursor.execute('''
+            SELECT ce.target_url, COUNT(*) as click_cnt
+            FROM click_events ce
+            JOIN sessions s ON ce.session_id = s.id
+            WHERE s.link_id = ?
+            GROUP BY ce.target_url
+        ''', (link_id,))
+        click_rows = cursor.fetchall()
+        if click_rows:
+            summary.append("\n*External URL Clicks:*")
+            for r in click_rows:
+                short_url = r['target_url']
+                if len(short_url) > 40: short_url = short_url[:37] + "..."
+                summary.append(f"  - Clicked <{r['target_url']}|{short_url}> ({r['click_cnt']} time(s))")
+
+    except Exception as e:
+        print(f"Error compiling link activity summary: {e}")
+    finally:
+        conn.close()
+        
+    if not summary or session_count <= 1:
+        return "No prior activities recorded (this is their first visit!)."
+    return "\n".join(summary)

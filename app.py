@@ -8,6 +8,27 @@ import urllib.request
 import json
 from werkzeug.utils import secure_filename
 
+# --- Simple Zero-Dependency .env Loader ---
+def load_env():
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    if '=' in line:
+                        key, val = line.split('=', 1)
+                        key = key.strip()
+                        val = val.strip().strip("'").strip('"')
+                        os.environ[key] = val
+            print(".env file loaded successfully.")
+        except Exception as e:
+            print(f"Warning: could not load .env file: {e}")
+
+load_env()
+
 from flask import Flask, request, jsonify, make_response, send_file, session, redirect, url_for
 from collections import defaultdict
 
@@ -114,10 +135,10 @@ def _resolve_geo_and_notify(session_id, ip_address, host_url, is_first_open):
         conn.close()
     except Exception as e:
         print(f"Geo update failed for {session_id}: {e}")
-    if is_first_open:
-        send_slack_notification_async(session_id, host_url)
+    # Notify on EVERY open, as requested
+    send_slack_notification_async(session_id, host_url)
 
-# --- SLACK NOTIFICATIONS ON FIRST OPEN ---
+# --- SLACK NOTIFICATIONS ON EVERY OPEN ---
 
 def send_slack_notification_worker(webhook_url, payload):
     data = json.dumps(payload).encode('utf-8')
@@ -155,6 +176,9 @@ def send_slack_notification_async(session_id, host_url):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S Local Time")
     dashboard_link = f"{host_url}dashboard?link_id={link_id}"
     
+    # Get total engagement history and prior activity summary
+    activity_summary = database.get_link_activity_summary(link_id)
+    
     message_content = (
         f"Bundle '{filename}' opened by {name} ({email}) at {company}.\n"
         f"Location: {location}\n"
@@ -167,7 +191,15 @@ def send_slack_notification_async(session_id, host_url):
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Link Opened* 🚀\n*Bundle:* `{filename}`\n*Recipient:* {name} (<mailto:{email}|{email}>) at *{company}*\n*Location:* {location}\n*Opened at:* {timestamp}\n<{dashboard_link}|*View Journey Details in Dashboard*>"
+                    "text": (
+                        f"*Document Link Opened* 🚀\n"
+                        f"*Recipient:* {name} (<mailto:{email}|{email}>) at *{company}*\n"
+                        f"*Location:* {location}\n"
+                        f"*Bundle Items:* `{filename}`\n"
+                        f"*Opened at:* {timestamp}\n\n"
+                        f"*Engagement History & Prior Activity Summary:*\n{activity_summary}\n\n"
+                        f"<{dashboard_link}|*View Detailed Engagement Journey on Dashboard*>"
+                    )
                 }
             }
         ]

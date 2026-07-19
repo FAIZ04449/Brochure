@@ -8,6 +8,26 @@ import urllib.request
 from datetime import datetime, timedelta
 import database
 
+# --- Simple Zero-Dependency .env Loader ---
+def load_env():
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    if '=' in line:
+                        key, val = line.split('=', 1)
+                        key = key.strip()
+                        val = val.strip().strip("'").strip('"')
+                        os.environ[key] = val
+        except Exception as e:
+            pass
+
+load_env()
+
 def seed():
     print("Initializing SQLite database tables...")
     database.init_db()
