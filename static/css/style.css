@@ -274,7 +274,7 @@ body.viewer-body {
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding: 116px 1rem 1.5rem;
+    padding: 116px 1rem calc(1.5rem + 32px);
     background: var(--bg-dark);
 }
 
@@ -366,13 +366,17 @@ body.viewer-body {
 
 /* â”€â”€â”€ Footer â”€â”€â”€ */
 .viewer-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
     height: 32px;
-    background: rgba(18, 20, 26, 0.9);
+    background: #ffffff;
     border-top: 1px solid var(--border-color);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10;
+    z-index: 100;
 }
 .privacy-note {
     font-size: 0.72rem;
