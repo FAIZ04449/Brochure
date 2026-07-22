@@ -521,13 +521,13 @@ document.addEventListener('DOMContentLoaded', () => {
             modalEngagementScore.textContent = score;
             
             if (score >= 75) {
-                modalScoreEval.textContent = 'ðŸ”¥ Hot Outreach Prospect';
+                modalScoreEval.innerHTML = '<i class="fa-solid fa-fire"></i> Hot Outreach Prospect';
                 modalScoreEval.classList.add('hot');
             } else if (score >= 35) {
-                modalScoreEval.textContent = 'âš¡ Medium Interest';
+                modalScoreEval.innerHTML = '<i class="fa-solid fa-bolt"></i> Medium Interest';
                 modalScoreEval.classList.add('medium');
             } else {
-                modalScoreEval.textContent = 'â„ï¸ Low Interaction';
+                modalScoreEval.innerHTML = '<i class="fa-solid fa-snowflake"></i> Low Interaction';
                 modalScoreEval.classList.add('cold');
             }
 
@@ -562,8 +562,8 @@ document.addEventListener('DOMContentLoaded', () => {
         allItems.forEach(item => {
             const li = document.createElement('li');
             li.innerHTML = `
-                <span class="click-url" style="color:var(--text-light); font-weight:500;">${escapeHTML(item.name)}</span>
-                <span class="click-time" style="background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">
+                <span class="click-url" style="color:#0f172a; font-weight:600;">${escapeHTML(item.name)}</span>
+                <span class="click-time">
                     <i class="fa-solid fa-clock"></i> ${formatDuration(item.seconds)}
                 </span>
             `;
